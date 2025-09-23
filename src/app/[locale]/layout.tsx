@@ -13,10 +13,10 @@ import { routing } from "@/i18n/routing";
 import env from "@/config/env";
 import clsx from "clsx";
 
-type Props = {
+interface PageProps {
+  params: Promise<{ locale: string }>;
   children: ReactNode;
-  params: { locale: Locale };
-};
+}
 
 const siteUrl = new URL(env.FRONTEND_BASE_URL);
 
@@ -47,7 +47,7 @@ export function generateStaticParams() {
   return routing.locales.map(locale => ({ locale }));
 }
 
-export default async function RootLayout({ children, params }: Props) {
+export default async function RootLayout({ children, params }: PageProps) {
   const { locale } = await params;
 
   if (!hasLocale(routing.locales, locale)) {

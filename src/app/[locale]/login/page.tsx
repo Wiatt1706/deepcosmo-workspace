@@ -7,6 +7,7 @@ import apiRoute from "@/lib/services/api-route";
 import { API } from "@/lib/services/endpoints";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { LoginResponse, ApiResponse } from "@/types/api";
 
 export default function LoginPage() {
   const t = useTranslations("Login");
@@ -31,11 +32,11 @@ export default function LoginPage() {
 
     try {
       setLoading(true);
-      const res = await apiRoute.post<{ token: string }>(API.AUTH.LOGIN, {
+      const res = await apiRoute.post<LoginResponse>(API.AUTH.LOGIN, {
         email: email.trim(),
         password: password.trim(),
       });
-      const token = res?.data?.token;
+      const token = (res as ApiResponse<LoginResponse>)?.data?.token;
       if (!token) throw new Error("No token returned");
       setCookie(null, "access_token", token, {
         path: "/",

@@ -4,15 +4,15 @@ import useSWR from "swr";
 import { useTranslations } from "next-intl";
 import apiRoute from "@/lib/services/api-route";
 import { API } from "@/lib/services/endpoints";
-import { User } from "@/types/api";
+import { User, ApiResponse, MeResponse } from "@/types/api";
 
-const fetcher = () => apiRoute.get<User>(API.COMMON.ME);
+const fetcher = () => apiRoute.get<MeResponse>(API.COMMON.ME);
 
 export default function DashboardPage() {
   const t = useTranslations("Dashboard");
   const { data, error, isLoading, mutate } = useSWR("me", fetcher);
 
-  const me = data?.data;
+  const me = (data as ApiResponse<MeResponse>)?.data?.user;
 
   return (
     <div className="p-6 space-y-2">
