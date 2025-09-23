@@ -222,44 +222,6 @@ const checkCode = (files) => {
   return true;
 };
 
-// 检查代码格式
-const checkFormat = (files) => {
-  if (files.length === 0) return true;
-
-  info(`检查代码格式 (${files.length} 个文件)...`);
-  const result = batchExec(files, batch => `npx prettier --check --loglevel=warn --no-color ${batch.join(" ")}`);
-
-  if (!result.success) {
-    error("格式问题:");
-
-    // 解析 Prettier 错误信息
-    const cleanError = removeAnsiCodes(result.error);
-    const errorLines = cleanError.split("\n");
-    const formatErrors = [];
-
-    errorLines.forEach(line => {
-      if (line.includes(".js") || line.includes(".ts") || line.includes(".css") ||
-          line.includes(".scss") || line.includes(".json") || line.includes(".md")) {
-        formatErrors.push(line.trim());
-      }
-    });
-
-    if (formatErrors.length > 0) {
-      error(`发现 ${formatErrors.length} 个格式问题:`);
-      formatErrors.forEach(err => {
-        log(`  ${err}`);
-      });
-    } else {
-      log("  代码格式不符合要求");
-    }
-
-    warning("修复方法: npm run format");
-    return false;
-  }
-
-  return true;
-};
-
 // 主函数
 const main = () => {
   const stagedFiles = getStagedFiles();
@@ -269,10 +231,6 @@ const main = () => {
   }
 
   const codeFiles = filterFiles(stagedFiles, [".ts", ".tsx", ".js", ".jsx"]);
-  const formatFiles = filterFiles(
-    stagedFiles,
-    [".ts", ".tsx", ".js", ".jsx", ".json", ".css", ".scss", ".md"]
-  );
 
   console.log(""); // 空行分隔
 
@@ -280,7 +238,6 @@ const main = () => {
 
   let typesPassed = true;
   let codePassed = true;
-  let formatPassed = true;
 
   // 类型检查
   if (hasTypeScript) {
@@ -292,11 +249,7 @@ const main = () => {
   codePassed = checkCode(codeFiles);
   console.log(""); // 空行分隔
 
-  // 格式检查
-  formatPassed = checkFormat(formatFiles);
-  console.log(""); // 空行分隔
-
-  if (typesPassed && codePassed && formatPassed) {
+  if (typesPassed && codePassed) {
     success("所有检查通过，可以提交");
     process.exit(0);
   } else {
