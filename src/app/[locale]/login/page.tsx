@@ -35,7 +35,7 @@ export default function LoginPage() {
         email: email.trim(),
         password: password.trim(),
       });
-      const token = (res as unknown)?.data?.token || (res as unknown)?.token;
+      const token = res?.data?.token;
       if (!token) throw new Error("No token returned");
       setCookie(null, "access_token", token, {
         path: "/",
