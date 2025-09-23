@@ -1,0 +1,41 @@
+{
+  "Login": {
+    "account": "Account",
+    "title": "Login",
+    "email": "Email",
+    "password": "Password",
+    "loginButton": "Login",
+    "forgotPassword": "Forgot password?",
+    "register": "Register",
+    "rememberMe": "Remember me",
+    "loginError": {
+      "emailRequired": "Please enter email address",
+      "passwordRequired": "Please enter password"
+    }
+  },
+  "Home": {
+    "title": "DeepCosmo",
+    "subtitle": "Lightweight, modern, reusable front-end template for small teams.",
+    "getStarted": "Get Started",
+    "seeDemo": "See Demo",
+    "apiDemo": "API Demo"
+  },
+  "Dashboard": {
+    "title": "Dashboard",
+    "loading": "Loading...",
+    "loadError": "Load failed: Please refresh or re-login",
+    "user": "User",
+    "role": "Role",
+    "refresh": "Refresh"
+  },
+  "NotFound": {
+    "title": "Page Not Found",
+    "desc": "Sorry, the page doesn't exist or has been moved.",
+    "back": "Go back",
+    "home": "Back to Home (DeepCosmo)"
+  },
+  "Error": {
+    "title": "An error occurred on this page",
+    "retry": "Retry"
+  }
+}

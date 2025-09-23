@@ -1,0 +1,41 @@
+{
+  "Login": {
+    "account": "账户",
+    "title": "登录",
+    "email": "邮箱",
+    "password": "密码",
+    "loginButton": "登录",
+    "forgotPassword": "忘记密码?",
+    "register": "注册",
+    "rememberMe": "记住我",
+    "loginError": {
+      "emailRequired": "请输入邮箱地址",
+      "passwordRequired": "请输入密码"
+    }
+  },
+  "Home": {
+    "title": "DeepCosmo",
+    "subtitle": "轻量、现代、可复用的小团队前端模板。",
+    "getStarted": "开始使用",
+    "seeDemo": "查看示例",
+    "apiDemo": "API 演示"
+  },
+  "Dashboard": {
+    "title": "仪表板",
+    "loading": "加载中...",
+    "loadError": "加载失败：请刷新或重新登录",
+    "user": "用户",
+    "role": "角色",
+    "refresh": "刷新"
+  },
+  "NotFound": {
+    "title": "页面未找到",
+    "desc": "抱歉，页面不存在或已被移动。",
+    "back": "返回上一页",
+    "home": "回到首页（DeepCosmo）"
+  },
+  "Error": {
+    "title": "当前页面出现异常",
+    "retry": "重试"
+  }
+}

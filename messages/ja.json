@@ -1,0 +1,41 @@
+{
+  "Login": {
+    "account": "アカウント",
+    "title": "ログイン",
+    "email": "メール",
+    "password": "パスワード",
+    "loginButton": "ログイン",
+    "forgotPassword": "パスワードをお忘れですか?",
+    "register": "登録",
+    "rememberMe": "ログイン状態を保持",
+    "loginError": {
+      "emailRequired": "メールアドレスを入力してください",
+      "passwordRequired": "パスワードを入力してください"
+    }
+  },
+  "Home": {
+    "title": "DeepCosmo",
+    "subtitle": "小規模チーム向けの軽量・モダン・再利用可能なフロントエンドテンプレート。",
+    "getStarted": "はじめる",
+    "seeDemo": "デモを見る",
+    "apiDemo": "API デモ"
+  },
+  "Dashboard": {
+    "title": "ダッシュボード",
+    "loading": "読み込み中...",
+    "loadError": "読み込み失敗：更新するか再ログインしてください",
+    "user": "ユーザー",
+    "role": "ロール",
+    "refresh": "更新"
+  },
+  "NotFound": {
+    "title": "ページが見つかりません",
+    "desc": "申し訳ありませんが、ページが存在しないか移動されました。",
+    "back": "戻る",
+    "home": "ホームへ（DeepCosmo）"
+  },
+  "Error": {
+    "title": "このページでエラーが発生しました",
+    "retry": "再試行"
+  }
+}

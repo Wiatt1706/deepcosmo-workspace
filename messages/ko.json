@@ -1,0 +1,41 @@
+{
+  "Login": {
+    "account": "계정",
+    "title": "로그인",
+    "email": "이메일",
+    "password": "비밀번호",
+    "loginButton": "로그인",
+    "forgotPassword": "비밀번호를 잊으셨나요?",
+    "register": "회원가입",
+    "rememberMe": "기억하기",
+    "loginError": {
+      "emailRequired": "이메일 주소를 입력하세요",
+      "passwordRequired": "비밀번호를 입력하세요"
+    }
+  },
+  "Home": {
+    "title": "DeepCosmo",
+    "subtitle": "소규모 팀을 위한 가볍고 현대적인 재사용 가능한 프론트엔드 템플릿.",
+    "getStarted": "시작하기",
+    "seeDemo": "데모 보기",
+    "apiDemo": "API 데모"
+  },
+  "Dashboard": {
+    "title": "대시보드",
+    "loading": "로딩 중...",
+    "loadError": "로딩 실패: 새로고침하거나 다시 로그인하세요",
+    "user": "사용자",
+    "role": "역할",
+    "refresh": "새로고침"
+  },
+  "NotFound": {
+    "title": "페이지를 찾을 수 없습니다",
+    "desc": "죄송합니다. 페이지가 존재하지 않거나 이동되었습니다.",
+    "back": "뒤로가기",
+    "home": "홈으로 (DeepCosmo)"
+  },
+  "Error": {
+    "title": "이 페이지에서 오류가 발생했습니다",
+    "retry": "다시 시도"
+  }
+}
