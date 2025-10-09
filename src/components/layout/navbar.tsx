@@ -1,19 +1,13 @@
 "use client";
 
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { LocaleSwitcher } from "@/components/layout/locale-switcher";
-import { LogoutButton } from "@/components/layout/logout-button";
+import { UserMenu } from "@/components/auth/user-menu";
 import { Link } from "@/i18n/navigation";
-import { parseCookies } from "nookies";
-import { useEffect, useState } from "react";
+import { useAuthStatus } from "@/lib/auth/hooks";
+import LocaleSwitcher from "./locale-switcher";
 
 export function Navbar() {
-  const [loggedIn, setLoggedIn] = useState(false);
-
-  useEffect(() => {
-    const hasToken = Boolean(parseCookies().access_token);
-    setLoggedIn(hasToken);
-  }, []);
+  const isAuthenticated = useAuthStatus();
 
   return (
     <header className="w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -22,7 +16,7 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <LocaleSwitcher />
           <ThemeToggle />
-          {loggedIn ? <LogoutButton /> : null}
+          {isAuthenticated && <UserMenu />}
         </div>
       </div>
     </header>

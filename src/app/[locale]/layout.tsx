@@ -1,6 +1,6 @@
 import "../globals.css";
 import type { Metadata } from "next";
-import { hasLocale, Locale, NextIntlClientProvider } from "next-intl";
+import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { setRequestLocale, getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -9,6 +9,7 @@ import NextTopLoader from "nextjs-toploader";
 import { Toaster as ToasterSonner } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { Navbar } from "@/components/layout/navbar";
+import { AuthProvider } from "@/components/auth/auth-provider";
 import { routing } from "@/i18n/routing";
 import env from "@/config/env";
 import clsx from "clsx";
@@ -63,11 +64,13 @@ export default async function RootLayout({ children, params }: PageProps) {
         <NextTopLoader color="#16a34a" showSpinner={false} height={2} />
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider>
-            <NuqsAdapter>
-              <Navbar />
-              <ToasterSonner position="top-center" />
-              {children}
-            </NuqsAdapter>
+            <AuthProvider>
+              <NuqsAdapter>
+                <Navbar />
+                <ToasterSonner position="top-center" />
+                {children}
+              </NuqsAdapter>
+            </AuthProvider>
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

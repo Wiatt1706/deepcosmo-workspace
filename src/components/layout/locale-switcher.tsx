@@ -1,25 +1,25 @@
 "use client";
 
-import { usePathname, useRouter } from "@/i18n/navigation";
-import { routing } from "@/i18n/routing";
-import { Button } from "@/components/ui/button";
+import { useLocale } from "next-intl";
 
-export function LocaleSwitcher() {
-  const router = useRouter();
-  const pathname = usePathname();
+import { localeOptions } from "@/types/locales";
+import LocaleSwitcherDropdown from "./locale-switcher-select";
+
+export default function LocaleSwitcher() {
+  const locale = useLocale();
+  const options = Object.entries(localeOptions).map(([code, { label }]) => ({
+    code,
+    label,
+  }));
 
   return (
-    <div className="flex items-center gap-2">
-      {routing.locales.map(locale => (
-        <Button
-          key={locale}
-          size="sm"
-          variant="outline"
-          onClick={() => router.replace({ pathname }, { locale })}
-        >
-          {locale.toUpperCase()}
-        </Button>
-      ))}
-    </div>
+    <>
+      <LocaleSwitcherDropdown
+        defaultValue={locale}
+        label={"Language"}
+        options={options}
+      />
+    </>
   );
 }
+

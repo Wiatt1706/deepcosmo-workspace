@@ -1,8 +1,16 @@
 import { Link } from "@/i18n/navigation";
-import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
+import { setRequestLocale } from "next-intl/server";
 
-export default function RootPage() {
-  const t = useTranslations("Home");
+interface PageProps {
+  params: Promise<{ locale: string }>;
+}
+
+export default async function RootPage({ params }: PageProps) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  
+  const t = await getTranslations("Home");
   return (
     <main className="mx-auto max-w-4xl px-4 py-16">
       <h1 className="text-3xl font-bold">{t("title")}</h1>

@@ -1,67 +1,61 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { setCookie } from "nookies";
-import apiRoute from "@/lib/services/api-route";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import apiRoute from "@/lib/services/api-route";
 
 export default function AuthCallbackPage() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const locale = typeof window !== "undefined" ? (window.location.pathname.match(/^\/(\w{2})\//)?.[1] || "zh") : "zh";
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("正在处理登录...");
 
   useEffect(() => {
     const handleCallback = async () => {
-      const code = searchParams.get("code");
-      const state = searchParams.get("state");
-      const error = searchParams.get("error");
-
-      if (error) {
-        setStatus("error");
-        setMessage(`登录失败: ${error}`);
-        toast.error(`登录失败: ${error}`);
-        return;
-      }
-
-      if (!code) {
-        setStatus("error");
-        setMessage("缺少授权码");
-        toast.error("登录失败: 缺少授权码");
-        return;
-      }
-
       try {
         setMessage("正在验证登录信息...");
         
-        const res = await apiRoute.post<{ accessToken: string; user: { name?: string; email: string } }>("/auth/oauth", {
-          code,
-          state,
+        // 收集查询参数
+        const params: Record<string, string> = {};
+        searchParams.forEach((value, key) => {
+          params[key] = value;
         });
-
-        if (res.code === 200 && res.data) {
-          const { accessToken, user } = res.data as { accessToken: string; user: { name?: string; email: string } };
-          
-          // 保存访问令牌
-          setCookie(null, "access_token", accessToken, {
-            path: "/",
-            maxAge: 60 * 60 * 24 * 7, // 7天
-            sameSite: "lax",
-            secure: typeof window !== "undefined" && window.location.protocol === "https:",
+        
+        // 处理hash参数（GitHub OAuth返回的token在hash中）
+        if (typeof window !== "undefined" && window.location.hash) {
+          const hash = window.location.hash.substring(1);
+          const hashParams = new URLSearchParams(hash);
+          hashParams.forEach((value, key) => {
+            params[key] = value;
           });
+        }
+        
+        // 检查是否有认证参数
+        if (!params.access_token && !params.code && !params.error) {
+          setStatus("error");
+          setMessage("未找到认证参数");
+          toast.error("认证失败：未找到认证参数");
+          setTimeout(() => {
+            router.push("/login");
+          }, 3000);
+          return;
+        }
+        
+        // 使用统一的认证API处理回调
+        const response = await apiRoute.post<{ success: boolean; user?: { name?: string; email?: string }; error?: string }>("/auth/session", { params });
 
+        if (response.success) {
           setStatus("success");
-          setMessage(`欢迎回来，${user.name || user.email}！`);
+          setMessage(`欢迎回来，${response.user?.name || response.user?.email}！`);
           toast.success("登录成功！");
           
           // 延迟跳转，让用户看到成功消息
           setTimeout(() => {
-            router.push(`/${locale}/dashboard`);
+            router.push("/dashboard");
           }, 1500);
         } else {
-          throw new Error((res as unknown as { msg?: string }).msg || "登录失败");
+          throw new Error(response.error || "登录失败");
         }
       } catch (error) {
         setStatus("error");
@@ -71,13 +65,13 @@ export default function AuthCallbackPage() {
         
         // 延迟跳转到登录页
         setTimeout(() => {
-          router.push(`/${locale}/login`);
+          router.push("/login");
         }, 3000);
       }
     };
 
     handleCallback();
-  }, [searchParams, router, locale]);
+  }, [router, searchParams]);
 
   return (
     <div className="flex min-h-[calc(100svh-3.5rem)] items-center justify-center p-4">

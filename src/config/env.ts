@@ -6,7 +6,7 @@ const env = {
   FRONTEND_BASE_URL:
     process.env.NEXT_PUBLIC_API_USER || "http://localhost:3000",
   // API路由URL
-  API_ROUTE_URL: process.env.NEXT_PUBLIC_API_ROUTE_URL || "/api",
+  API_ROUTE_URL: process.env.NEXT_PUBLIC_API_ROUTE_URL || "",
   // 认证服务URL
   AUTH_SERVICE_URL: process.env.NEXT_PUBLIC_AUTH_SERVICE_URL || "",
   // 是否是生产环境
