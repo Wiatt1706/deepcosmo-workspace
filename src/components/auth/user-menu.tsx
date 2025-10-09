@@ -5,6 +5,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { useAuthContext } from "./auth-provider";
 import { toast } from "sonner";
@@ -30,9 +31,11 @@ export function UserMenu() {
     <div className="flex items-center space-x-4">
       <div className="flex items-center space-x-2">
         {user.avatar ? (
-          <img
+          <Image
             src={user.avatar}
             alt={user.name || user.email}
+            width={32}
+            height={32}
             className="h-8 w-8 rounded-full"
           />
         ) : (

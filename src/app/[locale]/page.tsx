@@ -1,6 +1,7 @@
 import { Link } from "@/i18n/navigation";
 import { getTranslations } from "next-intl/server";
 import { setRequestLocale } from "next-intl/server";
+import { Navbar } from "@/components/layout/navbar";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -9,16 +10,20 @@ interface PageProps {
 export default async function RootPage({ params }: PageProps) {
   const { locale } = await params;
   setRequestLocale(locale);
-  
+
   const t = await getTranslations("Home");
   return (
-    <main className="mx-auto max-w-4xl px-4 py-16">
-      <h1 className="text-3xl font-bold">{t("title")}</h1>
-      <p className="mt-2 text-muted-foreground">{t("subtitle")}</p>
-      <div className="mt-6 flex gap-3">
-        <Link href="/login" className="inline-flex h-10 items-center rounded-md bg-primary px-6 text-primary-foreground">{t("getStarted")}</Link>
-        <Link href="/dashboard" className="inline-flex h-10 items-center rounded-md border px-6">{t("seeDemo")}</Link>
-      </div>
-    </main>
+    <>
+      <Navbar />
+      <main className="mx-auto max-w-4xl px-4 py-16">
+        <h1 className="text-3xl font-bold">{t("title")}</h1>
+        <p className="mt-2 text-muted-foreground">{t("subtitle")}</p>
+        <div className="mt-6 flex gap-3">
+          <Link href="/login" className="inline-flex h-10 items-center rounded-md bg-primary px-6 text-primary-foreground">{t("getStarted")}</Link>
+          <Link href="/dashboard" className="inline-flex h-10 items-center rounded-md border px-6">{t("seeDemo")}</Link>
+        </div>
+      </main>
+    </>
+
   );
 }

@@ -8,7 +8,6 @@ import { ReactNode } from "react";
 import NextTopLoader from "nextjs-toploader";
 import { Toaster as ToasterSonner } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/layout/theme-provider";
-import { Navbar } from "@/components/layout/navbar";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { routing } from "@/i18n/routing";
 import env from "@/config/env";
@@ -66,7 +65,6 @@ export default async function RootLayout({ children, params }: PageProps) {
           <ThemeProvider>
             <AuthProvider>
               <NuqsAdapter>
-                <Navbar />
                 <ToasterSonner position="top-center" />
                 {children}
               </NuqsAdapter>

@@ -15,6 +15,13 @@
       "when": 1759980463078,
       "tag": "0001_thick_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1759996667677,
+      "tag": "0002_messy_master_chief",
+      "breakpoints": true
     }
   ]
 }

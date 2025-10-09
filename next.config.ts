@@ -22,7 +22,8 @@ export async function headers() {
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
             "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data: blob:",
+            // allow next/image remote images
+            "img-src 'self' https://avatars.githubusercontent.com data: blob:",
             "font-src 'self' data:",
             `connect-src ${connect}`,
             "frame-ancestors 'none'",
@@ -40,7 +41,8 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
-      { protocol: "https", hostname: "*.vercel-storage.com" }
+      { protocol: "https", hostname: "*.vercel-storage.com" },
+      { protocol: "https", hostname: "avatars.githubusercontent.com" }
     ]
   },
   experimental: {
