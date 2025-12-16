@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1759978746180,
-      "tag": "0000_last_shriek",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1759980463078,
-      "tag": "0001_thick_madame_masque",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1759996667677,
-      "tag": "0002_messy_master_chief",
+      "when": 1765815802076,
+      "tag": "0000_first_monster_badoon",
       "breakpoints": true
     }
   ]

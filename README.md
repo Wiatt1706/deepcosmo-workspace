@@ -120,30 +120,53 @@ VERCEL_PROJECT_PRODUCTION_URL=
 ## 📁 项目结构
 
 ```
-├── messages/           # 国际化翻译文件
+├── drizzle/                    # Drizzle 迁移与快照（自动生成）
+├── messages/                   # 国际化翻译文件
 │   ├── en.json
 │   ├── ja.json
 │   ├── ko.json
 │   └── zh.json
+├── public/                     # 静态资源
 ├── src/
-│   ├── app/           # Next.js App Router
-│   │   ├── [locale]/  # 国际化路由
-│   │   ├── api/       # API 路由
+│   ├── app/                   # Next.js App Router
+│   │   ├── [locale]/          # 国际化路由
+│   │   │   ├── (main)/        # 主区域
+│   │   │   ├── (auth)/        # 认证区域
+│   │   │   ├── error.tsx
+│   │   │   ├── layout.tsx
+│   │   │   └── page.tsx
+│   │   ├── api/auth/          # 认证 API
+│   │   │   ├── login/
+│   │   │   └── session/
 │   │   └── globals.css
-│   ├── components/    # 可复用组件
-│   │   ├── layout/    # 布局组件
-│   │   └── ui/        # UI 组件
-│   ├── config/        # 配置文件
-│   ├── i18n/          # 国际化配置
-│   ├── lib/           # 工具库
-│   │   └── services/  # API 服务
-│   ├── types/         # TypeScript 类型定义
-│   └── middleware.ts  # 中间件
-├── components.json    # Shadcn/ui 配置
-├── next.config.ts     # Next.js 配置
+│   ├── components/            # 全局可复用组件
+│   │   ├── layout/            # 布局组件（Navbar, Sidebar）
+│   │   ├── ui/                # UI 原始组件
+│   │   └── auth/              # 认证相关
+│   ├── config/                # 配置文件
+│   ├── db/                    # 数据库层
+│   │   ├── index.ts           # Drizzle 客户端
+│   │   └── schema/            # 表定义
+│   ├── hooks/                 # 共享 hooks
+│   ├── i18n/                  # 国际化配置
+│   ├── lib/
+│   │   ├── auth.ts            # 服务端认证
+│   │   ├── auth-client.ts     # 客户端认证
+│   │   ├── services/
+│   │   │   └── api-route.ts   # HTTP 客户端（强制使用）
+│   │   └── utils.ts
+│   ├── types/                 # TypeScript 类型定义
+│   ├── middleware.ts          # 路由保护 + 国际化
+│   └── messages/              # 国际化翻译
+├── .github/
+│   └── copilot-instructions.md  # AI 编码指南
+├── components.json            # Shadcn/ui 配置
+├── drizzle.config.ts          # Drizzle 配置
+├── next.config.ts             # Next.js 配置
 ├── package.json
-├── tailwind.config.js
-└── tsconfig.json
+├── PROJECT_RULES.md           # 项目规范（开发参考）
+├── tsconfig.json
+└── README.md
 ```
 
 ## 🔐 认证系统
@@ -191,20 +214,192 @@ function MyComponent() {
 
 ## 🔧 开发指南
 
-### 代码规范
-- 使用 ESLint 进行代码检查
-- 使用 Prettier 格式化代码
-- 提交信息遵循 Conventional Commits 规范
+### 项目规范
 
-### Git Hooks
-- **pre-commit**: 检查暂存文件的代码质量
-- **commit-msg**: 验证提交信息格式
+本项目遵循严格的开发规范以确保代码质量和一致性。请阅读以下文档：
 
-### 推荐的 VSCode 扩展
-- ESLint
-- Prettier
-- Tailwind CSS IntelliSense
-- TypeScript Importer
+- **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - AI 编码助手指南（黄金法则、架构、最佳实践）
+- **[PROJECT_RULES.md](PROJECT_RULES.md)** - 项目规范速查版（面向人类与 AI）
+
+### 数据库开发
+
+参考 [数据库 SOP 文档](docs/DATABASE.md) 了解：
+- 数据库结构修改流程
+- Drizzle 迁移管理
+- 命名规范与最佳实践
+- 团队协作与冲突解决
+
+快速命令：
+```bash
+pnpm run db:generate    # 生成迁移
+pnpm run db:migrate     # 应用迁移
+pnpm run db:push        # 强制同步（仅本地原型）
+pnpm run db:studio      # 打开可视化管理界面
+```
+
+### 代码质量
+
+```bash
+# 类型检查
+pnpm typecheck
+
+# 代码检查
+pnpm lint
+
+# 自动修复
+pnpm lint:fix
+```
+
+### 页面与组件开发
+
+新增页面遵循以下结构：
+
+```
+app/[locale]/<page-name>/
+├── _lib/
+│   ├── actions.ts       # Server Actions（写操作）
+│   ├── queries.ts       # 数据库查询（读操作）
+│   ├── validations.ts   # Zod Schema 与类型
+│   └── hooks.ts         # 页面私有 hooks（可选）
+├── _components/
+│   ├── PageClient.tsx   # 客户端组件
+│   └── ...
+└── page.tsx             # 服务端组件（组合层）
+```
+
+**数据流示例：**
+
+```tsx
+// _lib/queries.ts (服务端)
+export async function getUserProfile(id: string) {
+  return db.query.users.findFirst({ 
+    where: eq(users.id, id),
+    with: { profiles: true }
+  });
+}
+
+// _components/ProfileCard.tsx (客户端)
+"use client";
+export function ProfileCard({ user }: { user: any }) {
+  return <div>{user.name}</div>;
+}
+
+// page.tsx (服务端组合)
+import { getUserProfile } from "./_lib/queries";
+import ProfileCard from "./_components/ProfileCard";
+
+export default async function Page() {
+  const user = await getUserProfile(userId);
+  return <ProfileCard user={user} />;
+}
+```
+
+### HTTP 请求
+
+**强制使用 `apiRoute`，禁止原生 fetch：**
+
+```ts
+import apiRoute from "@/lib/services/api-route";
+
+// GET
+const data = await apiRoute.get<ResponseType>("/path", { 
+  handle401: false // 可选：禁止自动 401 处理
+});
+
+// POST
+const result = await apiRoute.post<ResponseType>("/path", { 
+  body: { /* 数据 */ }
+});
+```
+
+### 类型安全
+
+使用 Zod 作为数据验证与类型的唯一真源：
+
+```ts
+// _lib/validations.ts
+import { z } from "zod";
+
+export const userSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  email: z.string().email(),
+});
+
+export type User = z.infer<typeof userSchema>;
+
+// 使用
+const parsed = userSchema.parse(input);
+```
+
+### 国际化
+
+支持的语言：中文(zh)、英文(en)、日文(ja)、韩文(ko)
+
+```tsx
+// 服务端
+import { getTranslations } from "next-intl/server";
+
+export default async function Page() {
+  const t = await getTranslations("PageName");
+  return <h1>{t("title")}</h1>;
+}
+
+// 客户端
+"use client";
+import { useTranslations } from "next-intl";
+
+export function Component() {
+  const t = useTranslations("PageName");
+  return <h1>{t("title")}</h1>;
+}
+```
+
+### 常见约束
+
+**✅ 应该做：**
+- 使用 `apiRoute.get/post()` 发送请求
+- 受保护页面通过 `middleware.ts` 鉴权
+- 新页面遵循 `_lib/_components` 结构
+- Schema 变更包含迁移文件一起提交
+
+**❌ 不应该做：**
+- 用原生 `fetch` 或直接 `axios`
+- 在服务端组件使用客户端 Hook（`useEffect`、`useState` 等）
+- 直接在 Supabase 控制台修改表结构
+- 使用 `any` 类型（无法避免时必须加注释）
+
+### Git 工作流
+
+提交规范遵循 Conventional Commits：
+
+```bash
+# 提交前检查
+pnpm lint:fix       # 自动修复
+pnpm typecheck      # 类型检查
+
+# 数据库变更提交
+git add src/db/schema drizzle/
+git commit -m "feat(db): add is_featured to pixel_arts"
+
+# 功能提交
+git commit -m "feat(page): add user profile page"
+git commit -m "fix(auth): handle 401 properly"
+```
+
+---
+
+### PR 检查清单
+
+提交前请检查：
+- [ ] 遵循现有技术栈，无新库引入
+- [ ] 使用 `apiRoute` 发送 HTTP 请求
+- [ ] 新页面遵循 `_lib/_components` 目录结构
+- [ ] 数据库变更同时提交 Schema 与迁移文件
+- [ ] 无 `any` 类型或已加注释说明原因
+- [ ] 通过 TypeScript 检查（`pnpm typecheck`）
+- [ ] 通过 ESLint 检查（`pnpm lint`）
+- [ ] 提交信息遵循 Conventional Commits 规范
 
 ## 📦 部署
 
@@ -247,9 +442,13 @@ CMD ["npm", "start"]
 
 ---
 
-## 🔗 相关链接
+## � 相关资源
 
+- **AI 编码指南**：[.github/copilot-instructions.md](.github/copilot-instructions.md)
+- **项目规范**：[PROJECT_RULES.md](PROJECT_RULES.md)
+- **数据库 SOP**：[docs/DATABASE.md](docs/DATABASE.md)
 - [Next.js 文档](https://nextjs.org/docs)
 - [Tailwind CSS 文档](https://tailwindcss.com/docs)
 - [Shadcn/ui 文档](https://ui.shadcn.com)
 - [next-intl 文档](https://next-intl-docs.vercel.app)
+- [Drizzle ORM 文档](https://orm.drizzle.team)

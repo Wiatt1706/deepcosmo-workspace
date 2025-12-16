@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import createIntlMiddleware from "next-intl/middleware";
+import { getSessionCookie } from "better-auth/cookies";
 import { routing } from "./i18n/routing";
 
 const intlMiddleware = createIntlMiddleware(routing);
@@ -77,9 +78,8 @@ export async function middleware(request: NextRequest) {
   const pathWithoutLocale = getPathWithoutLocale(pathname);
 
   if (isRouteProtected(pathWithoutLocale)) {
-    const token = request.cookies.get("access_token")?.value;
-    console.log("token", token);
-    if (!token) {
+    const sessionCookie = getSessionCookie(request);
+    if (!sessionCookie) {
       const locale = routing.locales.find(locale =>
         pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
       ) || DEFAULT_LOCALE;
