@@ -3,21 +3,27 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { headers } from "next/headers";
+import { env } from "@/config/env";
 
 export const auth = betterAuth({
+  baseURL: env.BETTER_AUTH_URL || env.NEXT_PUBLIC_FRONTEND_BASE_URL,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: schema, 
   }),
   socialProviders: {
-    github: {
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    },
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }
+    ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET ? {
+      github: {
+        clientId: env.GITHUB_CLIENT_ID,
+        clientSecret: env.GITHUB_CLIENT_SECRET,
+      },
+    } : {}),
+    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? {
+      google: {
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+      },
+    } : {}),
   },
   // 可以添加 user 扩展字段映射
   user: {

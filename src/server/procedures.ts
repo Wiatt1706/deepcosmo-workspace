@@ -6,7 +6,7 @@ type Role = "admin" | "moderator" | "user";
  * 封装一个受保护的 Server Action。
  * @param requiredRole - 必需的角色 (可选，默认'user'表示仅需登录)
  */
-export const protectedProcedure = <T extends any[], R>(
+export const protectedProcedure = <T extends unknown[], R>(
   action: (user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, ...args: T) => Promise<R>,
   requiredRole: Role = 'user'
 ) => {

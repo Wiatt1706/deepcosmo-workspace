@@ -1,0 +1,1 @@
+ALTER TABLE "account" ADD CONSTRAINT "idx_account_provider_unique" UNIQUE("user_id","provider_id");

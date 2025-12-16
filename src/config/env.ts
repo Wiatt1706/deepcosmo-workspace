@@ -10,8 +10,16 @@ export const env = createEnv({
       .enum(["development", "test", "production"])
       .default("development"),
     DATABASE_URL: z.string().url(),
-    // 如果是服务器端专用的环境变量，可以放在这里
-    MD5_SALT_KEY: z.string().optional(), // 如果不是所有环境都需要，可以设为 optional
+    MD5_SALT_KEY: z.string().optional(),
+    
+    // Better Auth 配置
+    BETTER_AUTH_URL: z.string().url().optional(),
+    
+    // OAuth 认证配置
+    GITHUB_CLIENT_ID: z.string().optional(),
+    GITHUB_CLIENT_SECRET: z.string().optional(),
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
   },
 
   /**
@@ -39,6 +47,11 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     DATABASE_URL: process.env.DATABASE_URL,
     MD5_SALT_KEY: process.env.MD5_SALT_KEY || process.env.NEXT_PUBLIC_API_KEY,
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
     
     // 客户端变量
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
