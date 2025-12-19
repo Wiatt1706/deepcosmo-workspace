@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useEditorStore } from "../hook/pixelEditorStore";
-import { drawGrid, drawRuler } from "../helpers/BaseDraw";
 import { useInteractions } from "../hook/useInteractions";
 import { useCanvasSize } from "../hook/useCanvasBase";
+import { drawGrid } from "../helpers/DrawGrid";
+import { drawRuler } from "../helpers/DrawRuler";
 
 const EditCanvas = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -101,7 +102,7 @@ const EditCanvas = () => {
       className="h-full w-full overflow-hidden bg-[#f3f6f8] select-none"
       ref={containerRef}
       style={{
-        cursor: 'crosshair', // CAD标准的十字光标
+        cursor: 'crosshair',
       }}
     >
       <canvas ref={buffRef} />

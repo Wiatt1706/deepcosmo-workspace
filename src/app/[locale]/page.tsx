@@ -106,28 +106,16 @@ export default async function RootPage({ params }: PageProps) {
         {/* 英雄区域 */}
         <section className="relative overflow-hidden px-4 py-20 sm:py-28 md:py-32">
           {/* 品牌色背景装饰 */}
-          <div className="absolute inset-0 -z-10 overflow-hidden via-white to-blue-50/50 dark:from-gray-900 dark:via-black dark:to-blue-900/10">
-          
+          <div className="absolute inset-0 -z-10 overflow-hidden  from-blue-50 via-white to-blue-50/50 dark:from-gray-900 dark:via-black dark:to-blue-900/10">
+            <div className="absolute top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 animate-pulse rounded-full bg-gradient-to-r from-blue-500/5 to-cyan-500/5 blur-3xl opacity-50" />
+            
             {/* 网格背景 */}
             <div className="absolute inset-0 bg-[linear-gradient(to_right,#0070f010_1px,transparent_1px),linear-gradient(to_bottom,#0070f010_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,#000_70%,transparent_100%)]" />
           </div>
 
           <div className="mx-auto max-w-6xl">
             <div className="flex flex-col items-center text-center">
-              {/* Logo显示 */}
-              <div className="mb-8 animate-fade-in">
-                <div className="relative mx-auto h-24 w-32">
-                  <Image
-                    src="/logo.svg"
-                    alt="DeepCosmo Logo"
-                    width={120}
-                    height={90}
-                    className="h-full w-full object-contain"
-                    priority
-                  />
-                </div>
-              </div>
-              
+             
               <Badge 
                 variant="outline" 
                 className="mb-8 animate-fade-in px-4 py-2 text-sm backdrop-blur-sm border-blue-500/30"
@@ -165,7 +153,7 @@ export default async function RootPage({ params }: PageProps) {
                   size="lg" 
                   className="rounded-full border-blue-500/30 px-8 py-6 text-base transition-all hover:scale-105 hover:border-blue-500 hover:bg-blue-500/5"
                 >
-                  <Link href="/dashboard">
+                  <Link href="/worlds">
                     <Palette className="mr-2 h-5 w-5 text-blue-500" />
                     <span className="text-blue-600 dark:text-blue-400">
                       {t("exploreFeed", { defaultValue: "探索作品库" })}

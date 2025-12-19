@@ -11,7 +11,7 @@ interface CADEditorProps {
 
 const Editor: React.FC<CADEditorProps> = ({ className }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { scale, setScale } = useScale(1, 1, 1, 0.1, containerRef.current);
+  const { scale, setScale } = useScale(1, 0.1, 5, 0.1, containerRef.current);
 
   // 使用Zustand状态管理
   const {
