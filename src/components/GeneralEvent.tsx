@@ -51,7 +51,7 @@ export function useEvent<T extends Event>(
     return () => {
       resolvedTarget.removeEventListener(eventName, eventHandler as EventListener);
     };
-  }, [eventName, callback, options?.preventDefault, (target as any)?.current || target]);
+  }, [eventName, callback, options?.preventDefault, (target as { current: EventTarget | null })?.current || target]);
 }
 
 export function removeEvent(
