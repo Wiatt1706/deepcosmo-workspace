@@ -57,8 +57,8 @@ export default async function RootLayout({ children, params }: PageProps) {
 	const messages = await getMessages();
 
 	return (
-		<html className="h-full w-full" lang={locale} suppressHydrationWarning>
-			<body className={clsx("flex-1 h-full flex-col overflow-hidden")}>
+		<html className="w-full" lang={locale} suppressHydrationWarning>
+			<body className={clsx("flex flex-col w-full")}>
 				<NextTopLoader color="#16a34a" showSpinner={false} height={2} />
 				<NextIntlClientProvider messages={messages}>
 					<ThemeProvider>
