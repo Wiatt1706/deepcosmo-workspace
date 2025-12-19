@@ -1,0 +1,233 @@
+import { Position } from "../_lib/validations";
+import { create } from "zustand";
+
+interface EditorState {
+  // 画布状态
+  mapCenter: Position;
+  pixelSize: number;
+  scale: number;
+
+  // 鼠标状态
+  mousePosition: Position | null;
+  isDragging: boolean;
+  dragStart: Position | null;
+  lastMousePosition: Position | null;
+
+  // 交互模式
+  interactionMode: "pan" | "select" | "draw";
+  isMiddleMouseDown: boolean;
+  isRightMouseDown: boolean;
+
+  // 缩放控制
+  zoomSpeed: number;
+  minScale: number;
+  maxScale: number;
+
+  // 平移约束
+  panConstraints: {
+    enabled: boolean;
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+  };
+
+  // 画布尺寸
+  canvasWidth: number;
+  canvasHeight: number;
+
+  // 实用功能设置
+  snapToGrid: boolean;
+  showGrid: boolean;
+  showRuler: boolean;
+  gridSize: number;
+
+  // Actions
+  setMapCenter: (center: Position) => void;
+  setPixelSize: (size: number) => void;
+  setScale: (scale: number) => void;
+  setMousePosition: (position: Position | null) => void;
+  setIsDragging: (dragging: boolean) => void;
+  setDragStart: (start: Position | null) => void;
+  setCanvasSize: (width: number, height: number) => void;
+  setLastMousePosition: (position: Position | null) => void;
+
+  // 交互控制
+  setInteractionMode: (mode: "pan" | "select" | "draw") => void;
+  setIsMiddleMouseDown: (down: boolean) => void;
+  setIsRightMouseDown: (down: boolean) => void;
+
+  // 缩放控制
+  setZoomSpeed: (speed: number) => void;
+  setMinScale: (scale: number) => void;
+  setMaxScale: (scale: number) => void;
+
+  // 平移约束控制
+  setPanConstraints: (constraints: {
+    enabled: boolean;
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+  }) => void;
+
+  // 实用功能控制
+  setSnapToGrid: (snap: boolean) => void;
+  setShowGrid: (show: boolean) => void;
+  setShowRuler: (show: boolean) => void;
+  setGridSize: (size: number) => void;
+
+  // 复合操作
+  updateMapCenter: (deltaX: number, deltaY: number) => void;
+  zoomToPoint: (point: Position, factor: number) => void;
+  resetView: () => void;
+  zoomToFit: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+}
+
+export const useEditorStore = create<EditorState>((set, get) => ({
+  // 初始状态
+  mapCenter: { x: 0, y: 0 },
+  pixelSize: 10,
+  scale: 1,
+  mousePosition: null,
+  isDragging: false,
+  dragStart: null,
+  lastMousePosition: null,
+  canvasWidth: 800,
+  canvasHeight: 600,
+
+  // 交互模式
+  interactionMode: "select",
+  isMiddleMouseDown: false,
+  isRightMouseDown: false,
+
+  // 缩放控制
+  // 调低缩放速度，降低滚轮缩放的“力度”
+  zoomSpeed: 0.06,
+  minScale: 0.01,
+  maxScale: 100,
+
+  // 平移约束
+  panConstraints: {
+    enabled: false,
+    minX: -1000,
+    maxX: 1000,
+    minY: -1000,
+    maxY: 1000,
+  },
+
+  // 实用功能设置
+  snapToGrid: true,
+  showGrid: true,
+  showRuler: true,
+  gridSize: 10,
+
+  // Actions
+  setMapCenter: center => set({ mapCenter: center }),
+  setPixelSize: size => set({ pixelSize: size }),
+  setScale: scale => set({ scale }),
+  setMousePosition: position => set({ mousePosition: position }),
+  setIsDragging: dragging => set({ isDragging: dragging }),
+  setDragStart: start => set({ dragStart: start }),
+  setCanvasSize: (width, height) =>
+    set({ canvasWidth: width, canvasHeight: height }),
+  setLastMousePosition: position => set({ lastMousePosition: position }),
+
+  // 交互控制
+  setInteractionMode: mode => set({ interactionMode: mode }),
+  setIsMiddleMouseDown: down => set({ isMiddleMouseDown: down }),
+  setIsRightMouseDown: down => set({ isRightMouseDown: down }),
+
+  // 缩放控制
+  setZoomSpeed: speed => set({ zoomSpeed: speed }),
+  setMinScale: scale => set({ minScale: scale }),
+  setMaxScale: scale => set({ maxScale: scale }),
+
+  // 平移约束控制
+  setPanConstraints: constraints => set({ panConstraints: constraints }),
+
+  // 实用功能控制
+  setSnapToGrid: snap => set({ snapToGrid: snap }),
+  setShowGrid: show => set({ showGrid: show }),
+  setShowRuler: show => set({ showRuler: show }),
+  setGridSize: size => set({ gridSize: size }),
+
+  // 复合操作
+  updateMapCenter: (deltaX, deltaY) => {
+    const { mapCenter, panConstraints } = get();
+    let newX = mapCenter.x - deltaX;
+    let newY = mapCenter.y - deltaY;
+
+    // 应用平移约束
+    if (panConstraints.enabled) {
+      newX = Math.max(panConstraints.minX, Math.min(panConstraints.maxX, newX));
+      newY = Math.max(panConstraints.minY, Math.min(panConstraints.maxY, newY));
+    }
+
+    set({
+      mapCenter: {
+        x: newX,
+        y: newY,
+      },
+    });
+  },
+
+  resetView: () =>
+    set({
+      mapCenter: { x: 0, y: 0 },
+      scale: 1,
+      mousePosition: null,
+    }),
+
+  zoomToFit: () => {
+    const { canvasWidth, canvasHeight } = get();
+    // 简单的适应画布逻辑
+    const targetScale = Math.min(canvasWidth / 1000, canvasHeight / 1000);
+    set({
+      scale: Math.max(0.1, Math.min(10, targetScale)),
+      mapCenter: { x: 0, y: 0 },
+    });
+  },
+
+  zoomToPoint: (point, factor) => {
+    const { mapCenter, scale } = get();
+    const newScale = Math.max(
+      get().minScale,
+      Math.min(get().maxScale, scale * factor)
+    );
+
+    // 计算缩放后的新中心点，使指定点保持在屏幕上的相同位置
+    const scaleRatio = newScale / scale;
+    const newCenter = {
+      x: point.x - (point.x - mapCenter.x) * scaleRatio,
+      y: point.y - (point.y - mapCenter.y) * scaleRatio,
+    };
+
+    set({
+      scale: newScale,
+      mapCenter: newCenter,
+    });
+  },
+
+  zoomIn: () => {
+    const { scale, mousePosition } = get();
+    const factor = 1 + get().zoomSpeed;
+    if (mousePosition) {
+      get().zoomToPoint(mousePosition, factor);
+    } else {
+      set({ scale: Math.min(get().maxScale, scale * factor) });
+    }
+  },
+
+  zoomOut: () => {
+    const { scale, mousePosition } = get();
+    const factor = 1 / (1 + get().zoomSpeed);
+    if (mousePosition) {
+      get().zoomToPoint(mousePosition, factor);
+    } else {
+      set({ scale: Math.max(get().minScale, scale * factor) });
+    }
+  },
+}));
