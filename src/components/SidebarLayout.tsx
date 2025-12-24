@@ -111,7 +111,7 @@ const SidebarLayout = React.forwardRef<HTMLDivElement, SidebarLayoutProps>(
                   className={clsx(
                     "flex flex-col items-center text-xs p-2 rounded-md w-full",
                     isActive
-                      ? "bg-blue-100 text-blue-600 font-semibold"
+                      ? "bg-blue-100 text-blue-700 font-semibold"
                       : "text-gray-500 hover:bg-gray-100"
                   )}
                 >

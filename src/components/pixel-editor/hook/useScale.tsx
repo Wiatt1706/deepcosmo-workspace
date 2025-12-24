@@ -29,26 +29,11 @@ const useScale = (
 			requestRef.current = requestAnimationFrame(() => {
 				// 计算缩放因子
 				const factor = Math.pow(1 + zoomSpeed, -Math.sign(event.deltaY));
-
-				// 如果有鼠标位置，以鼠标位置为中心缩放
-				if (mousePosition && target) {
-					const rect = target.getBoundingClientRect();
-					const canvasX = event.clientX - rect.left;
-					const canvasY = event.clientY - rect.top;
-
-					// 转换为世界坐标
-					const centerX = canvasWidth / 2;
-					const centerY = canvasHeight / 2;
-					const worldX = (canvasX - centerX) / (pixelSize * scale) + mapCenter.x;
-					const worldY = (canvasY - centerY) / (pixelSize * scale) + mapCenter.y;
-
-				} else {
 					// 简单的缩放
 					setScale((prevScale) => {
 						const newScale = prevScale * factor;
 						return Math.max(minScale, Math.min(maxScale, newScale));
 					});
-				}
 
 				requestRef.current = null;
 			});

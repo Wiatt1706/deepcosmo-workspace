@@ -1,28 +1,23 @@
-import { Position } from "../_lib/validations";
+import { PixelBlock, Position } from "../_lib/validations";
 import { create } from "zustand";
-
 interface EditorState {
   // 画布状态
   mapCenter: Position;
   pixelSize: number;
   scale: number;
-
   // 鼠标状态
   mousePosition: Position | null;
   isDragging: boolean;
   dragStart: Position | null;
   lastMousePosition: Position | null;
-
   // 交互模式
   interactionMode: "pan" | "select" | "draw";
   isMiddleMouseDown: boolean;
   isRightMouseDown: boolean;
-
   // 缩放控制
   zoomSpeed: number;
   minScale: number;
   maxScale: number;
-
   // 平移约束
   panConstraints: {
     enabled: boolean;
@@ -31,17 +26,23 @@ interface EditorState {
     minY: number;
     maxY: number;
   };
-
   // 画布尺寸
   canvasWidth: number;
   canvasHeight: number;
-
   // 实用功能设置
   snapToGrid: boolean;
   showGrid: boolean;
   showRuler: boolean;
   gridSize: number;
 
+  // --- 新增: 像素数据 ---
+  pixels: Record<string, PixelBlock>; // Key: "x,y"
+  currentColor: string;
+
+  // --- 新增: Actions ---
+  addPixel: (x: number, y: number) => void;
+  removePixel: (x: number, y: number) => void;
+  setCurrentColor: (color: string) => void;
   // Actions
   setMapCenter: (center: Position) => void;
   setPixelSize: (size: number) => void;
@@ -51,17 +52,14 @@ interface EditorState {
   setDragStart: (start: Position | null) => void;
   setCanvasSize: (width: number, height: number) => void;
   setLastMousePosition: (position: Position | null) => void;
-
   // 交互控制
   setInteractionMode: (mode: "pan" | "select" | "draw") => void;
   setIsMiddleMouseDown: (down: boolean) => void;
   setIsRightMouseDown: (down: boolean) => void;
-
   // 缩放控制
   setZoomSpeed: (speed: number) => void;
   setMinScale: (scale: number) => void;
   setMaxScale: (scale: number) => void;
-
   // 平移约束控制
   setPanConstraints: (constraints: {
     enabled: boolean;
@@ -70,13 +68,11 @@ interface EditorState {
     minY: number;
     maxY: number;
   }) => void;
-
   // 实用功能控制
   setSnapToGrid: (snap: boolean) => void;
   setShowGrid: (show: boolean) => void;
   setShowRuler: (show: boolean) => void;
   setGridSize: (size: number) => void;
-
   // 复合操作
   updateMapCenter: (deltaX: number, deltaY: number) => void;
   zoomToPoint: (point: Position, factor: number) => void;
@@ -85,7 +81,6 @@ interface EditorState {
   zoomIn: () => void;
   zoomOut: () => void;
 }
-
 export const useEditorStore = create<EditorState>((set, get) => ({
   // 初始状态
   mapCenter: { x: 0, y: 0 },
@@ -97,18 +92,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   lastMousePosition: null,
   canvasWidth: 800,
   canvasHeight: 600,
-
   // 交互模式
   interactionMode: "select",
   isMiddleMouseDown: false,
   isRightMouseDown: false,
-
   // 缩放控制
   // 调低缩放速度，降低滚轮缩放的“力度”
   zoomSpeed: 0.06,
   minScale: 0.01,
   maxScale: 100,
-
   // 平移约束
   panConstraints: {
     enabled: false,
@@ -117,13 +109,48 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     minY: -1000,
     maxY: 1000,
   },
-
   // 实用功能设置
   snapToGrid: true,
   showGrid: true,
   showRuler: true,
   gridSize: 10,
+  // 新增初始状态
+  pixels: {},
+  currentColor: "#000000", // 默认黑色
 
+  // 新增 Actions 实现
+  setCurrentColor: (color) => set({ currentColor: color }),
+
+  addPixel: (x, y) => {
+    const { pixels, currentColor } = get();
+    const key = `${x},${y}`;
+    
+    // 如果该位置已经有颜色相同的像素，则跳过（性能优化）
+    if (pixels[key] && pixels[key].color === currentColor) return;
+
+    const newPixel: PixelBlock = {
+      id: crypto.randomUUID(), // 或者简单的 Math.random().toString(36)
+      x,
+      y,
+      width: 1, // 默认为1个单位
+      height: 1,
+      color: currentColor,
+      type: 1, // 默认类型
+    };
+
+    set((state) => ({
+      pixels: { ...state.pixels, [key]: newPixel }
+    }));
+  },
+
+  removePixel: (x, y) => {
+    const key = `${x},${y}`;
+    set((state) => {
+      const newPixels = { ...state.pixels };
+      delete newPixels[key];
+      return { pixels: newPixels };
+    });
+  },
   // Actions
   setMapCenter: center => set({ mapCenter: center }),
   setPixelSize: size => set({ pixelSize: size }),
@@ -134,38 +161,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setCanvasSize: (width, height) =>
     set({ canvasWidth: width, canvasHeight: height }),
   setLastMousePosition: position => set({ lastMousePosition: position }),
-
   // 交互控制
   setInteractionMode: mode => set({ interactionMode: mode }),
   setIsMiddleMouseDown: down => set({ isMiddleMouseDown: down }),
   setIsRightMouseDown: down => set({ isRightMouseDown: down }),
-
   // 缩放控制
   setZoomSpeed: speed => set({ zoomSpeed: speed }),
   setMinScale: scale => set({ minScale: scale }),
   setMaxScale: scale => set({ maxScale: scale }),
-
   // 平移约束控制
   setPanConstraints: constraints => set({ panConstraints: constraints }),
-
   // 实用功能控制
   setSnapToGrid: snap => set({ snapToGrid: snap }),
   setShowGrid: show => set({ showGrid: show }),
   setShowRuler: show => set({ showRuler: show }),
   setGridSize: size => set({ gridSize: size }),
-
   // 复合操作
   updateMapCenter: (deltaX, deltaY) => {
     const { mapCenter, panConstraints } = get();
     let newX = mapCenter.x - deltaX;
     let newY = mapCenter.y - deltaY;
-
     // 应用平移约束
     if (panConstraints.enabled) {
       newX = Math.max(panConstraints.minX, Math.min(panConstraints.maxX, newX));
       newY = Math.max(panConstraints.minY, Math.min(panConstraints.maxY, newY));
     }
-
     set({
       mapCenter: {
         x: newX,
@@ -173,14 +193,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       },
     });
   },
-
   resetView: () =>
     set({
       mapCenter: { x: 0, y: 0 },
       scale: 1,
       mousePosition: null,
     }),
-
   zoomToFit: () => {
     const { canvasWidth, canvasHeight } = get();
     // 简单的适应画布逻辑
@@ -190,27 +208,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       mapCenter: { x: 0, y: 0 },
     });
   },
-
   zoomToPoint: (point, factor) => {
     const { mapCenter, scale } = get();
     const newScale = Math.max(
       get().minScale,
       Math.min(get().maxScale, scale * factor)
     );
-
     // 计算缩放后的新中心点，使指定点保持在屏幕上的相同位置
     const scaleRatio = newScale / scale;
     const newCenter = {
       x: point.x - (point.x - mapCenter.x) * scaleRatio,
       y: point.y - (point.y - mapCenter.y) * scaleRatio,
     };
-
     set({
       scale: newScale,
       mapCenter: newCenter,
     });
   },
-
   zoomIn: () => {
     const { scale, mousePosition } = get();
     const factor = 1 + get().zoomSpeed;
@@ -220,7 +234,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ scale: Math.min(get().maxScale, scale * factor) });
     }
   },
-
   zoomOut: () => {
     const { scale, mousePosition } = get();
     const factor = 1 / (1 + get().zoomSpeed);
