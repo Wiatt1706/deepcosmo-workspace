@@ -131,80 +131,107 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setCurrentColor: (color) => set({ currentColor: color }),
   setBrushSize: (width, height) => set({ brushSize: { width, height } }),
   addPixel: (targetX, targetY) => {
-    const { pixels, currentColor, brushSize } = get();
+  const state = get();
+  const { pixels, currentColor, brushSize } = state;
+  
+  // 计算笔刷覆盖区域（整数坐标）
+  const startX = targetX - Math.floor(brushSize.width / 2);
+  const startY = targetY - Math.floor(brushSize.height / 2);
+  
+  // 创建新像素块
+  const key = `${startX},${startY}`;
+  const newPixel: PixelBlock = {
+    id: crypto.randomUUID(),
+    x: startX,
+    y: startY,
+    width: brushSize.width,
+    height: brushSize.height,
+    color: currentColor,
+    type: 1,
+  };
+  
+  // 检查是否与现有像素块重叠
+  const newPixels = { ...pixels };
+  let hasOverlap = false;
+  
+  for (const existingKey in newPixels) {
+    const existingPixel = newPixels[existingKey];
     
-    // 为了性能，先复制一份当前的像素数据
-    const newPixels = { ...pixels };
-    let hasChanges = false;
+    // 检查矩形重叠
+    if (startX < existingPixel.x + existingPixel.width &&
+        startX + brushSize.width > existingPixel.x &&
+        startY < existingPixel.y + existingPixel.height &&
+        startY + brushSize.height > existingPixel.y) {
+      
+      // 完全覆盖相同区域且颜色相同，跳过
+      if (existingPixel.x === startX && 
+          existingPixel.y === startY && 
+          existingPixel.width === brushSize.width && 
+          existingPixel.height === brushSize.height &&
+          existingPixel.color === currentColor) {
+        return;
+      }
+      
+      // 删除重叠的像素块
+      delete newPixels[existingKey];
+      hasOverlap = true;
+    }
+  }
+  
+  // 添加新像素块
+  newPixels[key] = newPixel;
+  set({ pixels: newPixels });
+},
 
-    // 计算中心偏移量，让鼠标位于笔刷中心
-    // 如果是偶数(如2)，中心会偏左上，这是像素软件的通习
-    const startX = targetX - Math.floor(brushSize.width / 2);
-    const startY = targetY - Math.floor(brushSize.height / 2);
-
-    // 双重循环遍历笔刷覆盖的区域
-    for (let i = 0; i < brushSize.width; i++) {
-      for (let j = 0; j < brushSize.height; j++) {
-        const x = startX + i;
-        const y = startY + j;
-        const key = `${x},${y}`;
-
-        // 检查颜色是否一致，避免重复渲染
-        if (newPixels[key] && newPixels[key].color === currentColor) {
-          continue;
-        }
-
-        // 写入新像素
-        newPixels[key] = {
-          id: crypto.randomUUID(), // 注意：如果绘制大量像素，UUID生成可能耗时，可改用简单计数器或坐标ID
-          x,
-          y,
-          width: 1,
-          height: 1,
-          color: currentColor,
-          type: 1,
-        };
+removePixel: (targetX, targetY) => {
+  const state = get();
+  const { pixels, brushSize } = state;
+  
+  const newPixels = { ...pixels };
+  let hasChanges = false;
+  
+  // 计算擦除区域（整数坐标）
+  const eraseStartX = targetX - Math.floor(brushSize.width / 2);
+  const eraseStartY = targetY - Math.floor(brushSize.height / 2);
+  const eraseEndX = eraseStartX + brushSize.width;
+  const eraseEndY = eraseStartY + brushSize.height;
+  
+  // 遍历所有像素块，检查是否与擦除区域相交
+  for (const key in newPixels) {
+    const pixel = newPixels[key];
+    const pixelEndX = pixel.x + pixel.width;
+    const pixelEndY = pixel.y + pixel.height;
+    
+    // 检查矩形是否相交
+    if (eraseStartX < pixelEndX &&
+        eraseEndX > pixel.x &&
+        eraseStartY < pixelEndY &&
+        eraseEndY > pixel.y) {
+      
+      // 计算相交区域
+      const intersectX1 = Math.max(eraseStartX, pixel.x);
+      const intersectY1 = Math.max(eraseStartY, pixel.y);
+      const intersectX2 = Math.min(eraseEndX, pixelEndX);
+      const intersectY2 = Math.min(eraseEndY, pixelEndY);
+      
+      // 如果擦除区域完全覆盖像素块，删除整个像素块
+      if (intersectX1 === pixel.x && intersectY1 === pixel.y &&
+          intersectX2 === pixelEndX && intersectY2 === pixelEndY) {
+        delete newPixels[key];
+        hasChanges = true;
+      }
+      // 如果部分覆盖，可能需要分割像素块（复杂情况，暂时简单处理为删除）
+      else {
+        delete newPixels[key];
         hasChanges = true;
       }
     }
-
-    // 只有当确实有像素改变时才触发更新
-    if (hasChanges) {
-      set({ pixels: newPixels });
-    }
-  },
-
-  // --- 修改: 支持笔刷尺寸的 removePixel (橡皮擦也应该有大小) ---
-  removePixel: (targetX, targetY) => {
-    const { pixels, brushSize } = get();
-    
-    // 如果想要橡皮擦始终是 1x1，可以忽略 brushSize，
-    // 但通常用户期望橡皮擦大小与笔刷一致或可独立设置。
-    // 这里假设橡皮擦复用笔刷大小：
-    
-    const newPixels = { ...pixels };
-    let hasChanges = false;
-
-    const startX = targetX - Math.floor(brushSize.width / 2);
-    const startY = targetY - Math.floor(brushSize.height / 2);
-
-    for (let i = 0; i < brushSize.width; i++) {
-      for (let j = 0; j < brushSize.height; j++) {
-        const x = startX + i;
-        const y = startY + j;
-        const key = `${x},${y}`;
-
-        if (newPixels[key]) {
-          delete newPixels[key];
-          hasChanges = true;
-        }
-      }
-    }
-
-    if (hasChanges) {
-      set({ pixels: newPixels });
-    }
-  },
+  }
+  
+  if (hasChanges) {
+    set({ pixels: newPixels });
+  }
+},
   // Actions
   setMapCenter: center => set({ mapCenter: center }),
   setPixelSize: size => set({ pixelSize: size }),

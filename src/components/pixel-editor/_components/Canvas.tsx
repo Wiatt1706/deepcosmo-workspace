@@ -63,16 +63,16 @@ const EditCanvas = () => {
     // 放在像素之后，标尺之前
     if (mousePosition) {
        drawGhostBrush(
-         buffCtx,
-         mousePosition,
-         mapCenter,
-         scale,
-         pixelSize,
-         canvasWidth,
-         canvasHeight,
-         brushSize,
-         currentColor
-       );
+        buffCtx,
+        mousePosition,
+        mapCenter,
+        scale,
+        pixelSize,
+        canvasWidth,
+        canvasHeight,
+        brushSize,
+        currentColor
+      );
     }
 
     // 4. 绘制标尺 / UI (顶层)
