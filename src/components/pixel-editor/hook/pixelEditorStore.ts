@@ -1,5 +1,11 @@
 import { PixelBlock, Position } from "../_lib/validations";
 import { create } from "zustand";
+
+interface BrushSize {
+  width: number;
+  height: number;
+}
+
 interface EditorState {
   // 画布状态
   mapCenter: Position;
@@ -38,11 +44,13 @@ interface EditorState {
   // --- 新增: 像素数据 ---
   pixels: Record<string, PixelBlock>; // Key: "x,y"
   currentColor: string;
+  brushSize: BrushSize;
 
   // --- 新增: Actions ---
   addPixel: (x: number, y: number) => void;
   removePixel: (x: number, y: number) => void;
   setCurrentColor: (color: string) => void;
+  setBrushSize: (width: number, height: number) => void;
   // Actions
   setMapCenter: (center: Position) => void;
   setPixelSize: (size: number) => void;
@@ -117,39 +125,85 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // 新增初始状态
   pixels: {},
   currentColor: "#000000", // 默认黑色
+  brushSize: { width: 1, height: 1 },
 
   // 新增 Actions 实现
   setCurrentColor: (color) => set({ currentColor: color }),
-
-  addPixel: (x, y) => {
-    const { pixels, currentColor } = get();
-    const key = `${x},${y}`;
+  setBrushSize: (width, height) => set({ brushSize: { width, height } }),
+  addPixel: (targetX, targetY) => {
+    const { pixels, currentColor, brushSize } = get();
     
-    // 如果该位置已经有颜色相同的像素，则跳过（性能优化）
-    if (pixels[key] && pixels[key].color === currentColor) return;
+    // 为了性能，先复制一份当前的像素数据
+    const newPixels = { ...pixels };
+    let hasChanges = false;
 
-    const newPixel: PixelBlock = {
-      id: crypto.randomUUID(), // 或者简单的 Math.random().toString(36)
-      x,
-      y,
-      width: 1, // 默认为1个单位
-      height: 1,
-      color: currentColor,
-      type: 1, // 默认类型
-    };
+    // 计算中心偏移量，让鼠标位于笔刷中心
+    // 如果是偶数(如2)，中心会偏左上，这是像素软件的通习
+    const startX = targetX - Math.floor(brushSize.width / 2);
+    const startY = targetY - Math.floor(brushSize.height / 2);
 
-    set((state) => ({
-      pixels: { ...state.pixels, [key]: newPixel }
-    }));
+    // 双重循环遍历笔刷覆盖的区域
+    for (let i = 0; i < brushSize.width; i++) {
+      for (let j = 0; j < brushSize.height; j++) {
+        const x = startX + i;
+        const y = startY + j;
+        const key = `${x},${y}`;
+
+        // 检查颜色是否一致，避免重复渲染
+        if (newPixels[key] && newPixels[key].color === currentColor) {
+          continue;
+        }
+
+        // 写入新像素
+        newPixels[key] = {
+          id: crypto.randomUUID(), // 注意：如果绘制大量像素，UUID生成可能耗时，可改用简单计数器或坐标ID
+          x,
+          y,
+          width: 1,
+          height: 1,
+          color: currentColor,
+          type: 1,
+        };
+        hasChanges = true;
+      }
+    }
+
+    // 只有当确实有像素改变时才触发更新
+    if (hasChanges) {
+      set({ pixels: newPixels });
+    }
   },
 
-  removePixel: (x, y) => {
-    const key = `${x},${y}`;
-    set((state) => {
-      const newPixels = { ...state.pixels };
-      delete newPixels[key];
-      return { pixels: newPixels };
-    });
+  // --- 修改: 支持笔刷尺寸的 removePixel (橡皮擦也应该有大小) ---
+  removePixel: (targetX, targetY) => {
+    const { pixels, brushSize } = get();
+    
+    // 如果想要橡皮擦始终是 1x1，可以忽略 brushSize，
+    // 但通常用户期望橡皮擦大小与笔刷一致或可独立设置。
+    // 这里假设橡皮擦复用笔刷大小：
+    
+    const newPixels = { ...pixels };
+    let hasChanges = false;
+
+    const startX = targetX - Math.floor(brushSize.width / 2);
+    const startY = targetY - Math.floor(brushSize.height / 2);
+
+    for (let i = 0; i < brushSize.width; i++) {
+      for (let j = 0; j < brushSize.height; j++) {
+        const x = startX + i;
+        const y = startY + j;
+        const key = `${x},${y}`;
+
+        if (newPixels[key]) {
+          delete newPixels[key];
+          hasChanges = true;
+        }
+      }
+    }
+
+    if (hasChanges) {
+      set({ pixels: newPixels });
+    }
   },
   // Actions
   setMapCenter: center => set({ mapCenter: center }),
