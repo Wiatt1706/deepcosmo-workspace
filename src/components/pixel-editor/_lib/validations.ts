@@ -3,6 +3,10 @@ export interface Position {
   y: number;
 }
 
+export interface BrushSize {
+  width: number;
+  height: number;
+}
 // 像素块存储实体
 export interface PixelBlock {
   id: string;

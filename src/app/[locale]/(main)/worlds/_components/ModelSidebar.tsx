@@ -3,7 +3,7 @@ import { Box, Ruler, Settings } from "lucide-react";
 import React from "react";
 import useModeStore, { EditorMode, EditorModeConfig } from "../_lib/modeStore";
 import SidebarLayout from "@/components/SidebarLayout";
-import Toolbar from "@/components/pixel-editor/_components/Toolbar";
+import {EditorToolbar} from "@/components/pixel-editor/_components/Toolbar";
 
 // 定义组件的props类型
 interface EditorSidebarProps {
@@ -35,8 +35,8 @@ const ModelSidebar: React.FC<EditorSidebarProps> = ({ className }) => {
   // 内容渲染函数
   const renderContent = (activeId: string) => {
     const contentMap: Record<string, React.ReactNode> = {
-      "editor": <Toolbar />,
-      "project": <Toolbar />,
+      "editor": <EditorToolbar />,
+      "project": <EditorToolbar />,
     };
 
     return contentMap[activeId] ?? null;

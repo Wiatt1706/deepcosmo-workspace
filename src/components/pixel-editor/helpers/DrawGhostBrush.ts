@@ -6,12 +6,15 @@ interface BrushSize {
   height: number;
 }
 
-// 苹果风格的设计原则：
-// 1. 优雅的层次感
-// 2. 完美的抗锯齿
-// 3. 微妙的动画和过渡
-// 4. 清晰的视觉反馈
-// 5. 一致的视觉语言
+// Apple Design Constants
+const CONSTANTS = {
+  LABEL_BG: 'rgba(30, 30, 30, 0.85)', // 深色磨砂感背景
+  LABEL_TEXT: '#FFFFFF',
+  BORDER_ACCENT: 'rgba(255, 255, 255, 0.9)', // 高亮边框
+  BORDER_SHADOW: 'rgba(0, 0, 0, 0.3)', // 深色投影边框，保证在白色背景可见
+  GRID_LINE: 'rgba(255, 255, 255, 0.2)',
+  CORNER_RADIUS: 4,
+};
 
 export const drawGhostBrush = (
   ctx: CanvasRenderingContext2D,
@@ -26,515 +29,241 @@ export const drawGhostBrush = (
 ) => {
   if (!mousePos) return;
 
-  const dpr = window.devicePixelRatio || 1;
-  
-  // 计算网格对齐位置
+  // 1. 基础坐标计算
   const halfWidth = canvasWidth / 2;
   const halfHeight = canvasHeight / 2;
   
   const offsetX = mousePos.x - halfWidth;
   const offsetY = mousePos.y - halfHeight;
 
+  // 将屏幕坐标转换为世界坐标
   const worldX = (offsetX / scale) + mapCenter.x;
   const worldY = (offsetY / scale) + mapCenter.y;
 
+  // 对齐网格
   const gridX = Math.floor(worldX / pixelSize);
   const gridY = Math.floor(worldY / pixelSize);
 
+  // 计算笔刷起始网格
   const startX = gridX - Math.floor(brushSize.width / 2);
   const startY = gridY - Math.floor(brushSize.height / 2);
 
+  // 转换回屏幕坐标用于绘制
   const screenX = (startX * pixelSize - mapCenter.x) * scale + halfWidth;
   const screenY = (startY * pixelSize - mapCenter.y) * scale + halfHeight;
-  const screenWidth = brushSize.width * pixelSize * scale;
-  const screenHeight = brushSize.height * pixelSize * scale;
+  const screenW = brushSize.width * pixelSize * scale;
+  const screenH = brushSize.height * pixelSize * scale;
 
   ctx.save();
 
-  // 苹果风格的设计：层次分明的视觉效果
-  // 层级1：柔和的填充背景
-  drawSubtleBackground(ctx, screenX, screenY, screenWidth, screenHeight, color, scale);
+  // 2. 绘制逻辑分层
   
-  // 层级2：精确的网格系统
-  drawPrecisionGrid(ctx, screenX, screenY, screenWidth, screenHeight, brushSize, scale);
-  
-  // 层级3：优雅的边框系统
-  drawElegantBorder(ctx, screenX, screenY, screenWidth, screenHeight, color, scale);
-  
-  // 层级4：精致的十字准星
-  drawRefinedCrosshair(ctx, screenX, screenY, screenWidth, screenHeight, brushSize, color, scale);
-  
-  // 层级5：智能的尺寸指示器
-  drawIntelligentSizeIndicator(ctx, screenX, screenY, screenWidth, screenHeight, brushSize, scale, color);
+  // A. 填充层：极淡的色彩暗示 (Subtle Tint)
+  drawTintBackground(ctx, screenX, screenY, screenW, screenH, color);
+
+  // B. 网格层：仅当笔刷较大时显示内部网格 (Internal Grid)
+  if (brushSize.width > 1 || brushSize.height > 1) {
+    drawPixelGrid(ctx, screenX, screenY, screenW, screenH, brushSize.width, brushSize.height, scale);
+  }
+
+  // C. 边框层：双色高对比度边框 (Focus Ring)
+  drawFocusBorder(ctx, screenX, screenY, screenW, screenH, scale);
+
+  // D. 智能指示器层：自适应位置标签 (Smart Label)
+  // 只有非 1x1 笔刷才显示尺寸
+  if (brushSize.width > 1 || brushSize.height > 1) {
+    drawSmartLabel(ctx, screenX, screenY, screenW, screenH, brushSize, scale, canvasWidth, canvasHeight);
+  }
 
   ctx.restore();
 };
 
-// 层级1：柔和的填充背景
-const drawSubtleBackground = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  color: string,
-  scale: number
-) => {
-  // 苹果风格：使用极低不透明度的渐变填充
-  const alpha = 0.03 + Math.min(0.07, 0.1 / scale); // 随缩放动态调整透明度
-  
-  // 创建径向渐变填充
-  const centerX = x + width / 2;
-  const centerY = y + height / 2;
-  const gradient = ctx.createRadialGradient(
-    centerX, centerY, 0,
-    centerX, centerY, Math.min(width, height) / 2
-  );
-  
-  gradient.addColorStop(0, hexToRgba(color, alpha * 1.5));
-  gradient.addColorStop(0.5, hexToRgba(color, alpha));
-  gradient.addColorStop(1, hexToRgba(color, alpha * 0.3));
-  
-  ctx.fillStyle = gradient;
-  ctx.fillRect(x, y, width, height);
-};
+// --- 子绘制函数 ---
 
-// 层级2：精确的网格系统
-const drawPrecisionGrid = (
+const drawTintBackground = (
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  brushSize: BrushSize,
-  scale: number
-) => {
-  if (brushSize.width <= 1 && brushSize.height <= 1) return;
-  
-  const lineWidth = Math.max(0.25, 0.5 / scale);
-  ctx.lineWidth = lineWidth;
-  
-  // 苹果风格：使用极细的虚线，几乎不可见但能提供精确定位
-  ctx.setLineDash([1, 2]);
-  
-  // 计算单元格尺寸
-  const cellWidth = width / brushSize.width;
-  const cellHeight = height / brushSize.height;
-  
-  // 垂直网格线
-  for (let i = 1; i < brushSize.width; i++) {
-    const lineX = x + i * cellWidth;
-    
-    // 使用半透明白色，在所有背景下都可见
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.beginPath();
-    ctx.moveTo(lineX, y);
-    ctx.lineTo(lineX, y + height);
-    ctx.stroke();
-    
-    // 黑色描边，增强对比
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
-    ctx.beginPath();
-    ctx.moveTo(lineX + lineWidth, y);
-    ctx.lineTo(lineX + lineWidth, y + height);
-    ctx.stroke();
-  }
-  
-  // 水平网格线
-  for (let i = 1; i < brushSize.height; i++) {
-    const lineY = y + i * cellHeight;
-    
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.beginPath();
-    ctx.moveTo(x, lineY);
-    ctx.lineTo(x + width, lineY);
-    ctx.stroke();
-    
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
-    ctx.beginPath();
-    ctx.moveTo(x, lineY + lineWidth);
-    ctx.lineTo(x + width, lineY + lineWidth);
-    ctx.stroke();
-  }
-  
-  ctx.setLineDash([]);
-};
-
-// 层级3：优雅的边框系统
-const drawElegantBorder = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  color: string,
-  scale: number
-) => {
-  // 苹果风格：多层边框，创造深度感
-  
-  // 第一层：柔和的外发光
-  ctx.shadowColor = hexToRgba(color, 0.2);
-  ctx.shadowBlur = 4;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
-  
-  ctx.strokeStyle = 'transparent';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x - 1, y - 1, width + 2, height + 2);
-  
-  ctx.shadowColor = 'transparent';
-  
-  // 第二层：细边框
-  ctx.strokeStyle = hexToRgba(color, 0.8);
-  ctx.lineWidth = Math.max(0.5, 1 / scale);
-  ctx.strokeRect(x, y, width, height);
-  
-  // 第三层：内发光效果
-  const innerRectWidth = Math.max(1, 2 / scale);
-  ctx.strokeStyle = hexToRgba(color, 0.4);
-  ctx.lineWidth = innerRectWidth;
-  ctx.strokeRect(x + innerRectWidth, y + innerRectWidth, 
-                 width - innerRectWidth * 2, height - innerRectWidth * 2);
-  
-  // 第四层：高光边框（顶部和左侧）
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-  ctx.lineWidth = Math.max(0.25, 0.5 / scale);
-  
-  ctx.beginPath();
-  // 上边框
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + width, y);
-  // 左边框
-  ctx.moveTo(x, y);
-  ctx.lineTo(x, y + height);
-  ctx.stroke();
-  
-  // 第五层：阴影边框（底部和右侧）
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-  
-  ctx.beginPath();
-  // 下边框
-  ctx.moveTo(x, y + height);
-  ctx.lineTo(x + width, y + height);
-  // 右边框
-  ctx.moveTo(x + width, y);
-  ctx.lineTo(x + width, y + height);
-  ctx.stroke();
-};
-
-// 层级4：精致的十字准星
-const drawRefinedCrosshair = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  brushSize: BrushSize,
-  color: string,
-  scale: number
-) => {
-  const centerX = x + width / 2;
-  const centerY = y + height / 2;
-  
-  const lineLength = Math.max(3, 8 / scale);
-  const lineWidth = Math.max(0.5, 1 / scale);
-  const centerRadius = Math.max(0.5, 1.5 / scale);
-  
-  // 苹果风格：精细的渐变十字准星
-  
-  // 水平线
-  const hGradient = ctx.createLinearGradient(
-    centerX - lineLength, centerY,
-    centerX + lineLength, centerY
-  );
-  hGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
-  hGradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.7)');
-  hGradient.addColorStop(0.5, 'rgba(255, 255, 255, 1)');
-  hGradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.7)');
-  hGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  
-  ctx.strokeStyle = hGradient;
-  ctx.lineWidth = lineWidth;
-  ctx.lineCap = 'round';
-  
-  ctx.beginPath();
-  ctx.moveTo(centerX - lineLength, centerY);
-  ctx.lineTo(centerX + lineLength, centerY);
-  ctx.stroke();
-  
-  // 垂直线
-  const vGradient = ctx.createLinearGradient(
-    centerX, centerY - lineLength,
-    centerX, centerY + lineLength
-  );
-  vGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
-  vGradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.7)');
-  vGradient.addColorStop(0.5, 'rgba(255, 255, 255, 1)');
-  vGradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.7)');
-  vGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  
-  ctx.strokeStyle = vGradient;
-  
-  ctx.beginPath();
-  ctx.moveTo(centerX, centerY - lineLength);
-  ctx.lineTo(centerX, centerY + lineLength);
-  ctx.stroke();
-  
-  // 苹果风格的中心点
-  const centerGradient = ctx.createRadialGradient(
-    centerX, centerY, 0,
-    centerX, centerY, centerRadius * 1.5
-  );
-  centerGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  centerGradient.addColorStop(0.5, hexToRgba(color, 0.8));
-  centerGradient.addColorStop(1, hexToRgba(color, 0));
-  
-  ctx.fillStyle = centerGradient;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, centerRadius, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // 中心点边框
-  ctx.strokeStyle = hexToRgba(color, 0.5);
-  ctx.lineWidth = lineWidth * 0.5;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, centerRadius, 0, Math.PI * 2);
-  ctx.stroke();
-  
-  // 只有在笔刷大小大于1时才绘制角标记
-  if (brushSize.width > 1 || brushSize.height > 1) {
-    drawAppleCornerMarks(ctx, x, y, width, height, scale);
-  }
-};
-
-// 苹果风格的角标记
-const drawAppleCornerMarks = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  scale: number
-) => {
-  const cornerSize = Math.max(2, 4 / scale);
-  const lineWidth = Math.max(0.25, 0.5 / scale);
-  
-  ctx.lineWidth = lineWidth;
-  ctx.lineCap = 'round';
-  
-  // 苹果风格：非常精细的角标记，使用渐变
-  const gradient = ctx.createLinearGradient(0, 0, cornerSize, cornerSize);
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-  gradient.addColorStop(1, 'rgba(255, 255, 255, 0.4)');
-  
-  ctx.strokeStyle = gradient;
-  
-  // 四个角
-  // 左上角
-  ctx.beginPath();
-  ctx.moveTo(x + lineWidth, y + cornerSize);
-  ctx.lineTo(x + lineWidth, y + lineWidth);
-  ctx.lineTo(x + cornerSize, y + lineWidth);
-  ctx.stroke();
-  
-  // 右上角
-  ctx.beginPath();
-  ctx.moveTo(x + width - cornerSize, y + lineWidth);
-  ctx.lineTo(x + width - lineWidth, y + lineWidth);
-  ctx.lineTo(x + width - lineWidth, y + cornerSize);
-  ctx.stroke();
-  
-  // 左下角
-  ctx.beginPath();
-  ctx.moveTo(x + lineWidth, y + height - cornerSize);
-  ctx.lineTo(x + lineWidth, y + height - lineWidth);
-  ctx.lineTo(x + cornerSize, y + height - lineWidth);
-  ctx.stroke();
-  
-  // 右下角
-  ctx.beginPath();
-  ctx.moveTo(x + width - cornerSize, y + height - lineWidth);
-  ctx.lineTo(x + width - lineWidth, y + height - lineWidth);
-  ctx.lineTo(x + width - lineWidth, y + height - cornerSize);
-  ctx.stroke();
-};
-
-// 层级5：智能的尺寸指示器
-const drawIntelligentSizeIndicator = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  brushSize: BrushSize,
-  scale: number,
+  x: number, y: number, w: number, h: number,
   color: string
 ) => {
-  if (brushSize.width <= 1 && brushSize.height <= 1) return;
+  ctx.fillStyle = hexToRgba(color, 0.15); // 保持极低透明度
+  ctx.fillRect(x, y, w, h);
+};
+
+const drawPixelGrid = (
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  cols: number, rows: number,
+  scale: number
+) => {
+  // 当缩放太小时，隐藏内部网格以避免杂乱
+  if (scale < 0.5) return;
+
+  const cellW = w / cols;
+  const cellH = h / rows;
+
+  ctx.beginPath();
+  ctx.strokeStyle = CONSTANTS.GRID_LINE;
+  // 保持线宽一致，不随缩放变粗，但要有最小值
+  ctx.lineWidth = Math.max(0.5, 1 / scale); 
+
+  // 绘制垂直线
+  for (let i = 1; i < cols; i++) {
+    const lx = x + i * cellW;
+    ctx.moveTo(lx, y);
+    ctx.lineTo(lx, y + h);
+  }
+  // 绘制水平线
+  for (let i = 1; i < rows; i++) {
+    const ly = y + i * cellH;
+    ctx.moveTo(x, ly);
+    ctx.lineTo(x + w, ly);
+  }
+  ctx.stroke();
+};
+
+const drawFocusBorder = (
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  scale: number
+) => {
+  const lw = Math.max(1, 2 / scale); // 边框宽度
   
-  // 苹果风格：只有当笔刷大小有实际意义时才显示尺寸
-  const fontSize = Math.max(9, 11 / scale);
-  const paddingX = Math.max(3, 5 / scale);
-  const paddingY = Math.max(1, 2 / scale);
-  const borderRadius = Math.max(1, 2 / scale);
+  // 1. 外部深色描边（阴影/对比层）- 也就是 "Outer Glow" 的收敛版
+  ctx.strokeStyle = CONSTANTS.BORDER_SHADOW;
+  ctx.lineWidth = lw + (2 / scale); // 稍宽一点
+  ctx.strokeRect(x - (1 / scale), y - (1 / scale), w + (2 / scale), h + (2 / scale));
+
+  // 2. 内部亮色主描边 - 也就是 "Focus Ring"
+  ctx.strokeStyle = CONSTANTS.BORDER_ACCENT;
+  ctx.lineWidth = lw;
+  ctx.strokeRect(x, y, w, h);
   
+  // 3. 四角强化 (Corner Accents) - 类似相机的对焦框
+  const cornerLen = Math.min(w, h) * 0.2;
+  if (cornerLen > 4) {
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = lw * 1.5;
+    ctx.beginPath();
+    
+    // 左上
+    ctx.moveTo(x, y + cornerLen);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + cornerLen, y);
+    
+    // 右上
+    ctx.moveTo(x + w - cornerLen, y);
+    ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w, y + cornerLen);
+    
+    // 右下
+    ctx.moveTo(x + w, y + h - cornerLen);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x + w - cornerLen, y + h);
+    
+    // 左下
+    ctx.moveTo(x + cornerLen, y + h);
+    ctx.lineTo(x, y + h);
+    ctx.lineTo(x, y + h - cornerLen);
+    
+    ctx.stroke();
+  }
+};
+
+/**
+ * 核心改进：智能尺寸指示器
+ * 1. 边界检测：防止绘制在画布外
+ * 2. 胶囊样式：Apple UI 风格
+ * 3. 字体渲染优化
+ */
+const drawSmartLabel = (
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  brushSize: BrushSize,
+  scale: number,
+  canvasW: number, canvasH: number
+) => {
   const text = `${brushSize.width} × ${brushSize.height}`;
   
-  ctx.save();
-  ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  // 字体配置：使用系统字体栈，保证清晰
+  const fontSize = 12; // 这种 UI 元素通常不需要随缩放大幅改变大小，固定像素更清晰
+  ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif`;
   
-  // 测量文本尺寸
   const metrics = ctx.measureText(text);
-  const textWidth = metrics.width;
-  const textHeight = fontSize;
+  const textW = metrics.width;
+  const paddingX = 8;
+  const paddingY = 4;
+  const pillW = textW + paddingX * 2;
+  const pillH = fontSize + paddingY * 2;
   
-  // 计算标签位置（右上角外部）
-  const labelX = x + width + paddingX + textWidth / 2;
-  const labelY = y - paddingY - textHeight / 2;
-  
-  // 背景
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-  
-  // 圆角矩形背景
-  drawRoundedRect(
-    ctx,
-    labelX - textWidth / 2 - paddingX,
-    labelY - textHeight / 2 - paddingY,
-    textWidth + paddingX * 2,
-    textHeight + paddingY * 2,
-    borderRadius
-  );
-  
-  // 连接线
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-  ctx.lineWidth = Math.max(0.5, 1 / scale);
-  ctx.lineCap = 'round';
-  
-  ctx.beginPath();
-  ctx.moveTo(x + width, y);
-  ctx.lineTo(labelX - textWidth / 2 - paddingX, labelY);
-  ctx.stroke();
-  
-  // 文本
-  ctx.fillStyle = hexToRgba(color, 0.9);
-  ctx.fillText(text, labelX, labelY);
-  
-  // 文本阴影
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-  ctx.shadowBlur = 1;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 1;
-  ctx.fillText(text, labelX, labelY);
-  
-  ctx.shadowColor = 'transparent';
-  ctx.restore();
-};
+  const gap = 8; // 标签距离笔刷的间隙
 
-// 工具函数
-const hexToRgba = (hex: string, alpha: number = 1): string => {
-  hex = hex.replace('#', '');
+  // --- 智能位置计算 (Collision Logic) ---
   
-  if (hex.length === 3) {
-    hex = hex.split('').map(c => c + c).join('');
+  // 默认：居中显示在笔刷下方
+  let labelX = x + w / 2 - pillW / 2;
+  let labelY = y + h + gap;
+
+  // 1. 底部边界检测：如果下方空间不足，移到上方
+  if (labelY + pillH > canvasH) {
+    labelY = y - gap - pillH;
   }
   
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
+  // 2. 顶部边界检测：如果移到上方后还是超出（比如笔刷比屏幕还大），尝试放内部底部
+  if (labelY < 0) {
+    labelY = y + h - pillH - gap; 
+    // 极端情况：笔刷内部底部也被遮挡（非常少见），则强制显示在屏幕顶部
+    if (labelY + pillH > canvasH) labelY = canvasH - pillH - gap;
+  }
 
-const drawRoundedRect = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number
-) => {
+  // 3. 左右边界检测
+  if (labelX < 0) labelX = gap; // 贴左边
+  if (labelX + pillW > canvasW) labelX = canvasW - pillW - gap; // 贴右边
+
+  // --- 绘制胶囊 (Pill) ---
+  
   ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  ctx.lineTo(x + radius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
+  drawRoundedRectPath(ctx, labelX, labelY, pillW, pillH, 4);
+  
+  // 背景阴影（提升层次感）
+  ctx.shadowColor = 'rgba(0,0,0,0.2)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
+  
+  ctx.fillStyle = CONSTANTS.LABEL_BG;
   ctx.fill();
+  
+  // 清除阴影，准备绘制文字
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  // 文字
+  ctx.fillStyle = CONSTANTS.LABEL_TEXT;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  // +1 用于视觉上的垂直居中修正
+  ctx.fillText(text, labelX + pillW / 2, labelY + pillH / 2 + 1); 
 };
 
-// 高级功能：流畅的动画效果
-export const drawAnimatedGhostBrush = (
+// 辅助：绘制圆角矩形路径
+const drawRoundedRectPath = (
   ctx: CanvasRenderingContext2D,
-  mousePos: Position | null,
-  mapCenter: Position,
-  scale: number,
-  pixelSize: number,
-  canvasWidth: number,
-  canvasHeight: number,
-  brushSize: BrushSize,
-  color: string,
-  animationProgress: number // 0 到 1，用于动画效果
+  x: number, y: number, w: number, h: number, r: number
 ) => {
-  if (!mousePos) return;
-  
-  ctx.save();
-  
-  // 苹果风格：优雅的淡入效果
-  ctx.globalAlpha = easeInOutCubic(animationProgress);
-  
-  // 调用主绘制函数
-  drawGhostBrush(ctx, mousePos, mapCenter, scale, pixelSize, 
-                 canvasWidth, canvasHeight, brushSize, color);
-  
-  // 添加脉冲动画效果
-  if (animationProgress > 0.8) {
-    const pulseAlpha = (animationProgress - 0.8) * 5 * (1 - (animationProgress - 0.8) * 5);
-    
-    const halfWidth = canvasWidth / 2;
-    const halfHeight = canvasHeight / 2;
-    
-    const offsetX = mousePos.x - halfWidth;
-    const offsetY = mousePos.y - halfHeight;
-    
-    const worldX = (offsetX / scale) + mapCenter.x;
-    const worldY = (offsetY / scale) + mapCenter.y;
-    
-    const gridX = Math.floor(worldX / pixelSize);
-    const gridY = Math.floor(worldY / pixelSize);
-    
-    const startX = gridX - Math.floor(brushSize.width / 2);
-    const startY = gridY - Math.floor(brushSize.height / 2);
-    
-    const screenX = (startX * pixelSize - mapCenter.x) * scale + halfWidth;
-    const screenY = (startY * pixelSize - mapCenter.y) * scale + halfHeight;
-    const screenWidth = brushSize.width * pixelSize * scale;
-    const screenHeight = brushSize.height * pixelSize * scale;
-    
-    // 脉冲效果
-    ctx.globalAlpha = pulseAlpha * 0.3;
-    ctx.strokeStyle = hexToRgba(color, 0.7);
-    ctx.lineWidth = Math.max(1, 2 / scale);
-    
-    const pulseSize = pulseAlpha * 4;
-    ctx.strokeRect(
-      screenX - pulseSize,
-      screenY - pulseSize,
-      screenWidth + pulseSize * 2,
-      screenHeight + pulseSize * 2
-    );
-  }
-  
-  ctx.restore();
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 };
 
-// 缓动函数（苹果风格）
-const easeInOutCubic = (t: number): number => {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const hexToRgba = (hex: string, alpha: number): string => {
+  const cleanHex = hex.replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16);
+  const g = parseInt(cleanHex.substring(2, 4), 16);
+  const b = parseInt(cleanHex.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
