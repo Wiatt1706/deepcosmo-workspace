@@ -4,8 +4,6 @@ import { useEditorStore } from "./pixelEditorStore";
 import { useShallow } from "zustand/react/shallow";
 import { 
   canvasToWorld, 
-  brushPaint, 
-  brushPaintDrag,
   simpleBrushPaint 
 } from "../helpers/pixelEditorUtils";
 

@@ -1,27 +1,14 @@
 "use client";
 
 import React, { useRef } from "react";
-import { useEditorStore } from "./hook/pixelEditorStore";
 import EditCanvas from "./_components/Canvas";
-import useScale from "./hook/useScale";
 
-interface CADEditorProps {
+interface EditorProps {
   className?: string;
 }
 
-const Editor: React.FC<CADEditorProps> = ({ className }) => {
+const Editor: React.FC<EditorProps> = ({ className }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { scale, setScale } = useScale(1, 0.1, 5, 0.1, containerRef.current);
-
-  // 使用Zustand状态管理
-  const {
-    setScale: setCADScale,
-  } = useEditorStore();
-
-  // 同步缩放状态
-  React.useEffect(() => {
-    setCADScale(scale);
-  }, [scale, setCADScale]);
 
   return (
     <div className={`w-full h-full flex bg-white ${className}`}>
