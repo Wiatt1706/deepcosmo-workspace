@@ -3,8 +3,7 @@
 import Editor from "@/components/pixel-editor";
 import HeaderTool from "./_components/header-tool";
 import useModeStore from "./_lib/modeStore";
-import { PixelEditor } from "@/components/pixel-engine";
-
+import PixelEditor from "@/components/pixel-engine/PixelEditor";
 
 export default function Home() {
   const { currentMode } = useModeStore();
