@@ -3,6 +3,7 @@
 import Editor from "@/components/pixel-editor";
 import HeaderTool from "./_components/header-tool";
 import useModeStore from "./_lib/modeStore";
+import { PixelEditor } from "@/components/pixel-engine";
 
 
 export default function Home() {
@@ -22,7 +23,7 @@ export default function Home() {
   if (currentMode === "project") {
     return (
       <div className="w-full h-full">
-        <Editor />
+        <PixelEditor />
       </div>
     );
   }

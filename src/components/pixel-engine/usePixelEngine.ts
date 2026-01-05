@@ -1,24 +1,37 @@
+// hooks/usePixelEngine.tsx
 import { useEffect, useRef } from "react";
 import { PixelEngine } from "./core/PixelEngine";
+import { BrushTool } from "./tools/BrushTool";
 
-// react/usePixelEngine.ts
-export function usePixelEngine(ref: React.RefObject<HTMLDivElement>) {
+
+export function usePixelEngine(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  options = {}
+) {
   const engineRef = useRef<PixelEngine | null>(null);
 
   useEffect(() => {
-    if (!ref.current) return;
+    if (!containerRef.current) return;
 
-    const canvas = ref.current.querySelector("canvas")!;
-    const engine = new PixelEngine(canvas, {
-        showGrid: true,
-        initialScale: 2,
-        pixelSize: 8
+    // ✅ 正确：传入div容器，引擎会在其中创建canvas
+    const engine = new PixelEngine(containerRef.current, {
+      showGrid: true,
+      initialScale: 2,
+      pixelSize: 10,
+      ...options
     });
+    
+    // 默认使用画笔工具
+    const brushTool = new BrushTool();
+    engine.setTool(brushTool);
+    
     engine.start();
-
     engineRef.current = engine;
-    return () => engine.stop();
-  }, []);
+
+    return () => {
+      engine.stop();
+    };
+  }, [containerRef]);
 
   return engineRef;
 }

@@ -24,7 +24,7 @@ export class GridLayer extends RenderLayer {
       this.ctx,
       this.camera.center,
       this.camera.scale,
-      this.camera.pixelSize,
+      this.camera.pixelSize, 
       this.camera.viewport.width,
       this.camera.viewport.height,
       { width: 64, height: 64 }

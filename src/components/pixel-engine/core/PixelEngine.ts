@@ -119,8 +119,8 @@ export class PixelEngine {
     this.container.classList.add('pixel-engine-container');
     document.head.appendChild(style);
   }
-
-  private setupPixelStoreListeners() {
+  
+  private  setupPixelStoreListeners() {
     // 监听像素数据变化，标记像素图层需要更新
     const originalPaint = this.state.pixels.paint.bind(this.state.pixels);
     
@@ -225,23 +225,5 @@ export class PixelEngine {
         layer.markDirty();
       }
     });
-  }
-
-  exportCanvas(format: 'png' | 'jpeg' = 'png', quality?: number): string {
-    // 创建一个临时画布，合并所有图层
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d')!;
-    
-    const { width, height } = this.overlayCanvas;
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    
-    // 按渲染顺序绘制所有画布
-    const canvases = [this.gridCanvas, this.pixelCanvas, this.overlayCanvas];
-    canvases.forEach(canvas => {
-      tempCtx.drawImage(canvas, 0, 0);
-    });
-    
-    return tempCanvas.toDataURL(`image/${format}`, quality);
   }
 }

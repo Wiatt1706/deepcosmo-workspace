@@ -1,40 +1,38 @@
 // core/render/Renderer.ts
+import { CanvasSurface } from "./CanvasSurface";
 import { RenderLayer } from "./RenderLayer";
-
+import { Camera } from "../Camera";
 export class Renderer {
+  private layers: RenderLayer[] = [];
+
   constructor(
-    private layers: RenderLayer[]
+    private surface: CanvasSurface,
+    private camera: Camera
   ) {}
-
-  render() {
-    for (const layer of this.layers) {
-      layer.render();
-    }
-  }
-
-  resize(w: number, h: number) {
-    for (const layer of this.layers) {
-      layer.resize(w, h);
-    }
-  }
-
-  dispose() {
-    for (const layer of this.layers) {
-      if ('dispose' in layer && typeof (layer as any).dispose === 'function') {
-        (layer as any).dispose();
-      }
-    }
-    this.layers.length = 0;
-  }
 
   addLayer(layer: RenderLayer) {
     this.layers.push(layer);
   }
 
-  removeLayer(layer: RenderLayer) {
-    const index = this.layers.indexOf(layer);
-    if (index !== -1) {
-      this.layers.splice(index, 1);
+  resize(width: number, height: number) {
+    this.surface.resize(width, height);
+  }
+
+  render() {
+    const { ctx } = this.surface;
+
+    // 每帧清空
+    this.surface.clear();
+
+    for (const layer of this.layers) {
+      if (!layer.visible) continue;
+
+      layer.render(ctx, this.camera);
+      layer.clearDirty();
     }
+  }
+
+  dispose() {
+    this.layers.length = 0;
   }
 }
