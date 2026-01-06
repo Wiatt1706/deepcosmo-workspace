@@ -6,7 +6,6 @@ import { InputSystem } from '../systems/InputSystem';
 import { EventBus } from './EventBus';
 import { IEngine, IPlugin, EngineConfig } from '../types';
 
-// 实现 IEngine 接口
 export class Engine implements IEngine {
   public canvas: HTMLCanvasElement;
   public world: World;
@@ -14,6 +13,7 @@ export class Engine implements IEngine {
   public events: EventBus;
   public input: InputSystem;
   public renderer: Renderer;
+  public config: EngineConfig; // Public Config
 
   private isRunning: boolean = true;
   private plugins: Map<string, IPlugin> = new Map();
@@ -21,14 +21,18 @@ export class Engine implements IEngine {
   private resizeObserver: ResizeObserver;
 
   constructor(config: EngineConfig) {
+    this.config = config; // Save config
+
     // 1. DOM Setup
     this.canvas = document.createElement('canvas');
+    this.canvas.style.display = 'block'; // 防止内联元素空隙
+    this.canvas.style.outline = 'none';
     config.container.innerHTML = '';
     config.container.appendChild(this.canvas);
 
     // 2. Systems Setup
     this.events = new EventBus();
-    this.world = new World();
+    this.world = new World(config.chunkSize || 128);
     this.camera = new Camera();
     this.renderer = new Renderer(this.canvas, this.camera, this.world);
     this.input = new InputSystem(this.canvas, this.camera, this.events);
@@ -37,7 +41,7 @@ export class Engine implements IEngine {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(config.container);
 
-    // 4. Built-in behaviors (Camera Control)
+    // 4. Built-in interactions (Camera Control)
     this.setupBuiltinInteractions();
 
     // 5. Start Loop
@@ -49,15 +53,32 @@ export class Engine implements IEngine {
   }
 
   private setupBuiltinInteractions() {
+    // 滚轮缩放
     this.events.on('input:wheel', (e, screenPos) => {
        const zoomFactor = Math.exp(-e.deltaY * 0.001);
        this.camera.zoomBy(zoomFactor, screenPos.x, screenPos.y);
+    });
+
+    // 鼠标拖拽 (如果不处于特定工具模式)
+    // 注意：具体工具(如笔刷)可能会拦截或阻止此行为，这里作为基础底座
+    this.events.on('input:mousemove', (worldPos, e) => {
+        // 如果按住了空格 或者是 展示模式(readOnly)，则允许拖拽平移
+        const isHandMode = this.input.isSpacePressed || (this.config.readOnly && !this.input.isSpacePressed); // 简化逻辑：readOnly 默认就是漫游
+        
+        if (this.input.isDragging && isHandMode) {
+             // 只有当没有被其他逻辑(如Selection)阻止时
+             this.camera.panBy(e.movementX, e.movementY);
+             this.canvas.style.cursor = 'grabbing';
+        }
+    });
+    
+    this.events.on('input:mouseup', () => {
+        this.canvas.style.cursor = 'default';
     });
   }
 
   public registerPlugin(plugin: IPlugin) {
     if (this.plugins.has(plugin.name)) return;
-    // 注入 this (Engine 实例)
     plugin.onInit(this);
     this.plugins.set(plugin.name, plugin);
   }
@@ -65,26 +86,28 @@ export class Engine implements IEngine {
   private loop() {
     if (!this.isRunning) return;
 
-    // Update
     const dt = 16; 
+
+    // 1. Update Physics (Camera) [New]
+    this.camera.update();
+
+    // 2. Update Plugins
     this.plugins.forEach(p => p.onUpdate && p.onUpdate(dt));
 
-    // Render
+    // 3. Render World
     this.renderer.clear();
     this.renderer.drawWorld();
 
-    // Plugin Render Overlay (UI, Ghosts, Selection)
+    // 4. Render Plugins Overlay
     this.renderer.ctx.save();
     const dpr = window.devicePixelRatio || 1;
     this.renderer.ctx.translate(this.canvas.width / dpr / 2, this.canvas.height / dpr / 2);
     this.renderer.ctx.scale(this.camera.zoom, this.camera.zoom);
     this.renderer.ctx.translate(-this.camera.x, -this.camera.y);
     
-    // 让插件在场景之上绘制
     this.plugins.forEach(p => p.onRender && p.onRender(this.renderer.ctx));
-    // 触发渲染后事件
-    this.events.emit('render:after', this.renderer.ctx);
     
+    this.events.emit('render:after', this.renderer.ctx);
     this.renderer.ctx.restore();
 
     requestAnimationFrame(this._boundLoop);

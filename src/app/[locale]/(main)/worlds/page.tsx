@@ -4,6 +4,7 @@ import Editor from "@/components/pixel-editor";
 import HeaderTool from "./_components/header-tool";
 import useModeStore from "./_lib/modeStore";
 import PixelEditor from "@/components/pixel-engine/PixelEditor";
+import PixelViewer from "@/components/pixel-engine/PixelViewer";
 
 export default function Home() {
   const { currentMode } = useModeStore();
@@ -13,7 +14,7 @@ export default function Home() {
       <>
         <HeaderTool />
         <div className="w-full h-full bg-neutral-50">
-          <Editor />
+          <PixelEditor />
         </div>
       </>
     );
@@ -22,7 +23,7 @@ export default function Home() {
   if (currentMode === "project") {
     return (
       <div className="w-full h-full">
-        <PixelEditor />
+        <PixelViewer />
       </div>
     );
   }

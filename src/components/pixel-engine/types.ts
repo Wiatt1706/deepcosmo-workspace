@@ -14,21 +14,18 @@ export interface PixelBlock {
   w: number;
   h: number;
   color: string;
-  type: 'basic' | 'image' | 'nested'; // 'nested' 为嵌套世界入口
+  type: 'basic' | 'image' | 'nested'; 
   imageUrl?: string;
   
-  // [New] 嵌套世界专用字段
+  // 嵌套世界专用字段
   targetWorldId?: string; 
   worldName?: string;
   
   zIndex?: number;
 }
 
-// --- 工具类型 ---
-// [New] 新增 'portal' 工具
 export type ToolType = 'hand' | 'brush' | 'eraser' | 'rectangle' | 'image_stamp' | 'portal';
 
-// --- 命令接口 ---
 export interface ICommand {
     execute(): void;
     undo(): void;
@@ -36,35 +33,32 @@ export interface ICommand {
 
 // --- 事件映射表 ---
 export type EngineEvents = {
-  // Input Events
   'input:mousedown': [Vec2, MouseEvent];
   'input:mousemove': [Vec2, MouseEvent];
   'input:mouseup': [Vec2, MouseEvent];
-  'input:dblclick': [Vec2, MouseEvent]; // [New] 双击事件
+  'input:dblclick': [Vec2, MouseEvent];
   'input:wheel': [WheelEvent, Vec2];
   'input:keydown': [KeyboardEvent];
   'input:keyup': [KeyboardEvent];
   
-  // Logic Events
   'tool:set': [ToolType];
   'color:set': [string];
   'image:set': [string];
   
-  // [New] Navigation Events
-  'world:request-enter': [string, string]; // (targetId, worldName)
+  // [Modified] 增加 callback 参数：(targetId, worldName, onComplete)
+  'world:request-enter': [string, string, (() => void)?]; 
 
-  // Lifecycle Events
+  'viewer:block-selected': [PixelBlock | null]; 
+  'viewer:block-hover': [PixelBlock | null];    
+
   'engine:ready': [];
   'render:after': [CanvasRenderingContext2D];
   
-  // History Events
   'history:undo': [];
   'history:redo': [];
   'history:push': [ICommand];
   'history:state-change': [boolean, boolean];
 };
-
-// --- 核心接口 ---
 
 export interface IEventBus {
   on<K extends keyof EngineEvents>(event: K, handler: (...args: EngineEvents[K]) => void): void;
@@ -72,13 +66,21 @@ export interface IEventBus {
   emit<K extends keyof EngineEvents>(event: K, ...args: EngineEvents[K]): void;
 }
 
+export interface EngineConfig {
+  container: HTMLElement;
+  chunkSize?: number;
+  backgroundColor?: string;
+  readOnly?: boolean;
+}
+
 export interface IEngine {
   canvas: HTMLCanvasElement;
-  world: any; // 建议后续定义 IWorld
-  camera: any;
+  world: any; 
+  camera: any; 
   input: any; 
   renderer: any;
   events: IEventBus; 
+  config: EngineConfig; 
 }
 
 export interface IPlugin {
@@ -87,11 +89,4 @@ export interface IPlugin {
   onUpdate?(dt: number): void;
   onRender?(ctx: CanvasRenderingContext2D): void;
   onDestroy?(): void;
-}
-
-export interface EngineConfig {
-  container: HTMLElement;
-  chunkSize?: number;
-  backgroundColor?: string;
-  readOnly?: boolean;
 }
