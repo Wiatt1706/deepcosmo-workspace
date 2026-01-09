@@ -30,7 +30,7 @@ export class Renderer {
 
   clear() {
     const dpr = window.devicePixelRatio || 1;
-    this.ctx.fillStyle = '#111827'; // Gray-900 Background
+    this.ctx.fillStyle = '#f5f6f8'; // Gray-900 Background
     this.ctx.fillRect(0, 0, this.canvas.width / dpr, this.canvas.height / dpr);
   }
 
@@ -117,7 +117,7 @@ export class Renderer {
 
   private drawGrid(bounds: any, zoom: number) {
     const gridSize = 20;
-    this.ctx.strokeStyle = '#1f2937';
+    this.ctx.strokeStyle = 'rgba(55,55,55,0.15)';
     // 线条宽度随缩放变细，看起来更精致
     this.ctx.lineWidth = Math.max(0.5 / zoom, 0.5); 
     this.ctx.beginPath();
