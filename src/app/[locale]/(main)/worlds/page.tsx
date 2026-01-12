@@ -1,40 +1,40 @@
+// src/app/editor/page.tsx
 "use client";
-
-import Editor from "@/components/pixel-editor";
-import HeaderTool from "./_components/header-tool";
 import useModeStore from "./_lib/modeStore";
-import PixelEditor from "@/components/pixel-engine/PixelEditor";
-import PixelViewer from "@/components/pixel-engine/PixelViewer";
+import PixelCanvas from "@/components/pixel-engine/PixelCanvas";
+import ViewerOverlay from "@/components/pixel-engine/ViewerOverlay";
+import { usePixelEngine } from "@/components/pixel-engine/PixelContext";
+import HeaderTool from "@/components/pixel-engine/_components/header-tool";
 
 export default function Home() {
-  const { currentMode } = useModeStore();
+	const { currentMode } = useModeStore();
+	// 我们需要 events 来传给 ViewerOverlay，因为它现在是全局的
+	const { events } = usePixelEngine();
 
-  if (currentMode === "editor") {
-    return (
-      <>
-        <HeaderTool />
-        <div className="w-full h-full bg-neutral-50">
-          <PixelEditor />
-        </div>
-      </>
-    );
-  }
+	if (currentMode === "editor") {
+		return (
+			<>
+				<HeaderTool />
+				<div className="w-full h-full bg-neutral-50">
+					<PixelCanvas mode="editor" />
+				</div>
+			</>
+		);
+	}
 
-  if (currentMode === "project") {
-    return (
-      <div className="w-full h-full">
-        <PixelViewer />
-      </div>
-    );
-  }
+	if (currentMode === "project") {
+		return (
+			<>
+				<HeaderTool />
+				<div className="w-full h-full bg-neutral-50">
+					<PixelCanvas mode="project" />
 
-  return (
-    <div className="w-full h-full flex items-center justify-center">
-      <div className="text-center">
-        <div className="text-4xl mb-4">❓</div>
-        <h2 className="text-xl font-semibold text-gray-600">未知模式</h2>
-        <p className="text-gray-500">请选择有效的编辑器模式</p>
-      </div>
-    </div>
-  );
+						{/* 这里的 Overlay 不再是绝对定位于 Engine 内部，而是覆盖在 Canvas 上方 */}
+						{events && <ViewerOverlay events={events} />}
+				</div>
+			</>
+
+		);
+	}
+	return null;
 }

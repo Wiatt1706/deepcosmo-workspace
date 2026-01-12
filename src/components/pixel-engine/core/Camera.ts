@@ -1,9 +1,7 @@
 // src/engine/core/Camera.ts
 import { Vec2 } from '../types';
 
-const lerp = (start: number, end: number, t: number) => {
-  return start * (1 - t) + end * t;
-};
+// [FIX] 移除旧的 lerp，它是不正确的。我们将在 update 中使用基于时间的阻尼公式。
 
 export class Camera {
   public x: number = 0;
@@ -19,29 +17,39 @@ export class Camera {
   private viewportH: number = 0;
   
   private minZoom: number = 0.05; 
-  private maxZoom: number = 1000.0; // 提高上限，允许深度探索
-  private damping: number = 0.15; 
+  private maxZoom: number = 1000.0;
+  
+  // [FIX] 调整 Damping 系数。
+  // 之前是 0.15 (每帧)，现在我们需要一个每秒的衰减系数。
+  // 约等于：每秒移动剩余距离的 90% (值越大越快)
+  private dampingSpeed: number = 10.0; 
 
   resize(w: number, h: number) {
     this.viewportW = w;
     this.viewportH = h;
   }
 
-  update() {
-    // Zoom 插值
-    if (Math.abs(this.targetZoom - this.zoom) < 0.0001) {
-        this.zoom = this.targetZoom;
+  // [FIX] 接收 delta time (秒)
+  update(dt: number) {
+    // 1. Zoom 插值 (使用指数衰减公式，帧率无关)
+    // Formula: value = target + (current - target) * e^(-speed * dt)
+    if (Math.abs(this.targetZoom - this.zoom) > 0.0001 * this.zoom) {
+         const t = 1.0 - Math.exp(-this.dampingSpeed * dt);
+         this.zoom = this.zoom + (this.targetZoom - this.zoom) * t;
     } else {
-        this.zoom = lerp(this.zoom, this.targetZoom, this.damping);
+         this.zoom = this.targetZoom;
     }
 
-    // Position 插值
-    if (Math.abs(this.targetX - this.x) < 0.1 && Math.abs(this.targetY - this.y) < 0.1) {
-        this.x = this.targetX;
-        this.y = this.targetY;
+    // 2. Position 插值
+    // [FIX] 增加更平滑的阈值判断
+    const dist = Math.abs(this.targetX - this.x) + Math.abs(this.targetY - this.y);
+    if (dist > 0.1) {
+         const t = 1.0 - Math.exp(-this.dampingSpeed * dt);
+         this.x = this.x + (this.targetX - this.x) * t;
+         this.y = this.y + (this.targetY - this.y) * t;
     } else {
-        this.x = lerp(this.x, this.targetX, this.damping);
-        this.y = lerp(this.y, this.targetY, this.damping);
+         this.x = this.targetX;
+         this.y = this.targetY;
     }
   }
 
@@ -52,7 +60,6 @@ export class Camera {
     };
   }
 
-  // 获取基于目标值的世界坐标，用于连续滚轮缩放计算
   private screenToWorldTarget(sx: number, sy: number): Vec2 {
     return {
       x: (sx - this.viewportW / 2) / this.targetZoom + this.targetX,
@@ -64,10 +71,11 @@ export class Camera {
     const cx = centerScreenX ?? this.viewportW / 2;
     const cy = centerScreenY ?? this.viewportH / 2;
     
+    // 基于当前的目标状态计算，确保快速滚动时的连续性
     const worldPosBefore = this.screenToWorldTarget(cx, cy);
 
     const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.targetZoom * factor));
-    if (newZoom === this.targetZoom) return;
+    if (Math.abs(newZoom - this.targetZoom) < 0.00001) return;
     this.targetZoom = newZoom;
 
     // 反推目标位置，保持鼠标指向点不变
@@ -80,19 +88,12 @@ export class Camera {
       this.targetY -= screenDy / this.zoom;
   }
 
-  /**
-   * [New] 瞬间传送 (用于世界切换)
-   * 必须同时重置 current 和 target，否则物理 update 会把摄像机拉回去
-   */
   teleport(x: number, y: number, zoom: number) {
       this.x = this.targetX = x;
       this.y = this.targetY = y;
       this.zoom = this.targetZoom = zoom;
   }
 
-  /**
-   * [New] 平滑移动到某点 (用于点击查看详情)
-   */
   panToSmooth(worldX: number, worldY: number) {
       this.targetX = worldX;
       this.targetY = worldY;
@@ -101,6 +102,7 @@ export class Camera {
   getVisibleBounds(buffer: number = 0) {
     const tl = this.screenToWorld(0, 0);
     const br = this.screenToWorld(this.viewportW, this.viewportH);
+    // [FIX] Zoom padding 应该基于视口大小动态调整，防止无限缩放时计算错误
     const zoomPadding = 100 / this.zoom; 
     return { 
       left: Math.min(tl.x, br.x) - zoomPadding - buffer, 

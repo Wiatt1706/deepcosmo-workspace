@@ -1,38 +1,57 @@
+// src/engine/plugins/HistoryPlugin.ts
 import { IPlugin, IEngine, ICommand } from '../types';
 
 export class HistoryPlugin implements IPlugin {
   name = 'History';
   private engine!: IEngine;
-
   private undoStack: ICommand[] = [];
   private redoStack: ICommand[] = [];
-  private maxHistory = 50; // 限制历史记录步数，防止内存爆炸
+  private maxHistory = 50;
 
   onInit(engine: IEngine) {
     this.engine = engine;
 
-    // 监听 UI 的撤销/重做请求
     engine.events.on('history:undo', this.undo);
     engine.events.on('history:redo', this.redo);
-    
-    // 监听其他插件的操作请求
     engine.events.on('history:push', this.push);
+    
+    // [New] 绑定全局快捷键
+    window.addEventListener('keydown', this.handleKeydown);
 
     this.notifyStateChange();
   }
 
-  private push = (command: ICommand) => {
-    // 1. 执行命令
-    command.execute();
+  onDestroy() {
+      window.removeEventListener('keydown', this.handleKeydown);
+  }
+
+  // [New] 快捷键处理
+  private handleKeydown = (e: KeyboardEvent) => {
+      // Mac uses Meta (Command), Windows uses Ctrl
+      const isCtrl = e.ctrlKey || e.metaKey; 
+      
+      if (isCtrl && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+          e.preventDefault();
+          this.undo();
+      }
+      
+      if ((isCtrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) || (isCtrl && (e.key === 'y' || e.key === 'Y'))) {
+          e.preventDefault();
+          this.redo();
+      }
+  };
+
+  private push = (command: ICommand, executed: boolean = false) => {
+    // [FIX] 如果是批量操作，工具层可能已经逐步执行了，这里不需要再次 execute
+    if (!executed) {
+        command.execute();
+    }
     
-    // 2. 入栈
     this.undoStack.push(command);
-    // 新的操作会清空重做栈
-    this.redoStack = [];
+    this.redoStack = []; // Clear redo on new action
     
-    // 3. 限制栈大小
     if (this.undoStack.length > this.maxHistory) {
-      this.undoStack.shift(); // 移除最旧的记录
+      this.undoStack.shift();
     }
 
     this.notifyStateChange();
@@ -56,12 +75,11 @@ export class HistoryPlugin implements IPlugin {
     }
   };
 
-  // 通知 UI 更新按钮状态 (禁用/启用)
   private notifyStateChange() {
     this.engine.events.emit(
       'history:state-change', 
-      this.undoStack.length > 0, // canUndo
-      this.redoStack.length > 0  // canRedo
+      this.undoStack.length > 0, 
+      this.redoStack.length > 0 
     );
   }
 }

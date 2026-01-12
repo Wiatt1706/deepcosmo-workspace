@@ -4,7 +4,7 @@ import { Camera } from './Camera';
 import { Renderer } from '../systems/Renderer';
 import { InputSystem } from '../systems/InputSystem';
 import { EventBus } from './EventBus';
-import { IEngine, IPlugin, EngineConfig } from '../types';
+import { IEngine, IPlugin, EngineConfig, EngineState } from '../types';
 
 export class Engine implements IEngine {
   public canvas: HTMLCanvasElement;
@@ -13,67 +13,100 @@ export class Engine implements IEngine {
   public events: EventBus;
   public input: InputSystem;
   public renderer: Renderer;
-  public config: EngineConfig; // Public Config
+  public config: EngineConfig;
+
+  public state: EngineState;
 
   private isRunning: boolean = true;
   private plugins: Map<string, IPlugin> = new Map();
-  private _boundLoop: () => void;
+  private _boundLoop: (time: number) => void;
   private resizeObserver: ResizeObserver;
+  private lastTime: number = 0;
 
   constructor(config: EngineConfig) {
-    this.config = config; // Save config
+    this.config = config;
 
-    // 1. DOM Setup
+    // 1. 初始化状态 (集成 FillMode)
+    this.state = {
+        currentTool: 'brush',
+        fillMode: 'color',       // 默认为颜色模式
+        activeColor: '#3b82f6',  // 默认蓝色
+        activeImage: null,
+        isContinuous: false,
+        isReadOnly: config.readOnly || false,
+        debugMode: false
+    };
+
+    // 2. DOM Setup
     this.canvas = document.createElement('canvas');
-    this.canvas.style.display = 'block'; // 防止内联元素空隙
+    this.canvas.style.display = 'block'; 
     this.canvas.style.outline = 'none';
+    this.canvas.style.touchAction = 'none';
     config.container.innerHTML = '';
     config.container.appendChild(this.canvas);
 
-    // 2. Systems Setup
+    // 3. Systems Setup
     this.events = new EventBus();
     this.world = new World(config.chunkSize || 128);
-    this.camera = new Camera();
+    this.camera = new Camera(); 
     this.renderer = new Renderer(this.canvas, this.camera, this.world);
     this.input = new InputSystem(this.canvas, this.camera, this.events);
 
-    // 3. Auto Resize
+    // 4. Auto Resize
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(config.container);
 
-    // 4. Built-in interactions (Camera Control)
+    // 5. Interactions
     this.setupBuiltinInteractions();
 
-    // 5. Start Loop
+    // 6. Loop
     this.resize();
     this._boundLoop = this.loop.bind(this);
+    this.lastTime = performance.now();
     requestAnimationFrame(this._boundLoop);
 
     this.events.emit('engine:ready');
   }
 
   private setupBuiltinInteractions() {
-    // 滚轮缩放
+    // Zoom
     this.events.on('input:wheel', (e, screenPos) => {
        const zoomFactor = Math.exp(-e.deltaY * 0.001);
        this.camera.zoomBy(zoomFactor, screenPos.x, screenPos.y);
     });
 
-    // 鼠标拖拽 (如果不处于特定工具模式)
-    // 注意：具体工具(如笔刷)可能会拦截或阻止此行为，这里作为基础底座
+    // Pan (Space)
     this.events.on('input:mousemove', (worldPos, e) => {
-        // 如果按住了空格 或者是 展示模式(readOnly)，则允许拖拽平移
-        const isHandMode = this.input.isSpacePressed || (this.config.readOnly && !this.input.isSpacePressed); // 简化逻辑：readOnly 默认就是漫游
-        
-        if (this.input.isDragging && isHandMode) {
-             // 只有当没有被其他逻辑(如Selection)阻止时
+       const isHandMode = this.input.isSpacePressed || (this.state.isReadOnly && !this.input.isSpacePressed);
+       if (this.input.isDragging && isHandMode) {
              this.camera.panBy(e.movementX, e.movementY);
              this.canvas.style.cursor = 'grabbing';
-        }
+       }
     });
     
     this.events.on('input:mouseup', () => {
-        this.canvas.style.cursor = 'default';
+        if (this.input.isSpacePressed || this.state.currentTool === 'hand') {
+            this.canvas.style.cursor = 'grab';
+        } else {
+             this.canvas.style.cursor = 'default';
+        }
+    });
+
+    // State Sync
+    this.events.on('tool:set', (t) => { this.state.currentTool = t; });
+    this.events.on('setting:continuous', (b) => { this.state.isContinuous = b; });
+    
+    // [New] 样式/材质事件监听
+    this.events.on('style:set-color', (c) => { 
+        this.state.fillMode = 'color';
+        this.state.activeColor = c;
+        this.events.emit('state:change', { fillMode: 'color', activeColor: c });
+    });
+    
+    this.events.on('style:set-image', (img) => { 
+        this.state.fillMode = 'image';
+        this.state.activeImage = img;
+        this.events.emit('state:change', { fillMode: 'image', activeImage: img });
     });
   }
 
@@ -83,22 +116,18 @@ export class Engine implements IEngine {
     this.plugins.set(plugin.name, plugin);
   }
 
-  private loop() {
+  private loop(timestamp: number) {
     if (!this.isRunning) return;
 
-    const dt = 16; 
+    const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
+    this.lastTime = timestamp;
 
-    // 1. Update Physics (Camera) [New]
-    this.camera.update();
-
-    // 2. Update Plugins
+    this.camera.update(dt);
     this.plugins.forEach(p => p.onUpdate && p.onUpdate(dt));
 
-    // 3. Render World
     this.renderer.clear();
     this.renderer.drawWorld();
 
-    // 4. Render Plugins Overlay
     this.renderer.ctx.save();
     const dpr = window.devicePixelRatio || 1;
     this.renderer.ctx.translate(this.canvas.width / dpr / 2, this.canvas.height / dpr / 2);

@@ -1,12 +1,10 @@
 // src/engine/types.ts
 
-// --- 基础数学 ---
 export interface Vec2 {
   x: number;
   y: number;
 }
 
-// --- 数据模型 ---
 export interface PixelBlock {
   id: string;
   x: number;
@@ -16,22 +14,34 @@ export interface PixelBlock {
   color: string;
   type: 'basic' | 'image' | 'nested'; 
   imageUrl?: string;
-  
-  // 嵌套世界专用字段
   targetWorldId?: string; 
   worldName?: string;
-  
   zIndex?: number;
 }
 
-export type ToolType = 'hand' | 'brush' | 'eraser' | 'rectangle' | 'image_stamp' | 'portal';
+export type ToolType = 'hand' | 'brush' | 'eraser' | 'rectangle' | 'portal';
+
+// [New] 填充模式：决定当前工具生成的是纯色块还是图片块
+export type FillMode = 'color' | 'image';
 
 export interface ICommand {
     execute(): void;
     undo(): void;
 }
 
-// --- 事件映射表 ---
+export interface EngineState {
+    currentTool: ToolType;
+    
+    // [Refactor] 材质/样式状态
+    fillMode: FillMode;
+    activeColor: string;
+    activeImage: string | null; // Base64 或 URL
+    
+    isContinuous: boolean;
+    isReadOnly: boolean;
+    debugMode: boolean;
+}
+
 export type EngineEvents = {
   'input:mousedown': [Vec2, MouseEvent];
   'input:mousemove': [Vec2, MouseEvent];
@@ -42,12 +52,13 @@ export type EngineEvents = {
   'input:keyup': [KeyboardEvent];
   
   'tool:set': [ToolType];
-  'color:set': [string];
-  'image:set': [string];
+  'setting:continuous': [boolean];
   
-  // [Modified] 增加 callback 参数：(targetId, worldName, onComplete)
+  // [Refactor] 样式控制事件
+  'style:set-color': [string];
+  'style:set-image': [string];
+  
   'world:request-enter': [string, string, (() => void)?]; 
-
   'viewer:block-selected': [PixelBlock | null]; 
   'viewer:block-hover': [PixelBlock | null];    
 
@@ -56,14 +67,17 @@ export type EngineEvents = {
   
   'history:undo': [];
   'history:redo': [];
-  'history:push': [ICommand];
+  'history:push': [ICommand, boolean?]; 
   'history:state-change': [boolean, boolean];
+  
+  'state:change': [Partial<EngineState>];
 };
 
 export interface IEventBus {
   on<K extends keyof EngineEvents>(event: K, handler: (...args: EngineEvents[K]) => void): void;
   off<K extends keyof EngineEvents>(event: K, handler: (...args: EngineEvents[K]) => void): void;
   emit<K extends keyof EngineEvents>(event: K, ...args: EngineEvents[K]): void;
+  clear(): void;
 }
 
 export interface EngineConfig {
@@ -75,12 +89,16 @@ export interface EngineConfig {
 
 export interface IEngine {
   canvas: HTMLCanvasElement;
-  world: any; 
+  world: any;
   camera: any; 
   input: any; 
   renderer: any;
   events: IEventBus; 
-  config: EngineConfig; 
+  config: EngineConfig;
+  state: EngineState;
+  
+  resize(): void;
+  destroy(): void;
 }
 
 export interface IPlugin {
