@@ -1,4 +1,3 @@
-// src/engine/core/Engine.ts
 import { World } from './World';
 import { Camera } from './Camera';
 import { Renderer } from '../systems/Renderer';
@@ -26,22 +25,35 @@ export class Engine implements IEngine {
   constructor(config: EngineConfig) {
     this.config = config;
 
-    // 1. 初始化状态 (集成 FillMode)
+    // 1. 初始化状态
     this.state = {
         currentTool: 'brush',
-        fillMode: 'color',       // 默认为颜色模式
-        activeColor: '#3b82f6',  // 默认蓝色
+        fillMode: 'color',       
+        activeColor: '#3b82f6',  
         activeImage: null,
         isContinuous: false,
         isReadOnly: config.readOnly || false,
         debugMode: false
     };
 
-    // 2. DOM Setup
+    // 2. DOM Setup [FIXED]
+    // 使用 "Absolute + Overflow Hidden" 策略防止出现滚动条
     this.canvas = document.createElement('canvas');
-    this.canvas.style.display = 'block'; 
+    
+    // 强制父容器建立定位上下文，并裁剪溢出
+    config.container.style.position = 'relative';
+    config.container.style.overflow = 'hidden';
+    
+    // Canvas 脱离文档流，填满容器
+    this.canvas.style.display = 'block';
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '0';
+    this.canvas.style.left = '0';
+    this.canvas.style.width = '100%';
+    this.canvas.style.height = '100%';
     this.canvas.style.outline = 'none';
     this.canvas.style.touchAction = 'none';
+
     config.container.innerHTML = '';
     config.container.appendChild(this.canvas);
 
@@ -96,7 +108,6 @@ export class Engine implements IEngine {
     this.events.on('tool:set', (t) => { this.state.currentTool = t; });
     this.events.on('setting:continuous', (b) => { this.state.isContinuous = b; });
     
-    // [New] 样式/材质事件监听
     this.events.on('style:set-color', (c) => { 
         this.state.fillMode = 'color';
         this.state.activeColor = c;
