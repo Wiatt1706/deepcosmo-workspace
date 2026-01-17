@@ -2,16 +2,25 @@
 import { EngineState, PixelBlock } from '../types';
 import { MathUtils } from './MathUtils';
 
-/**
- * [Commercial-Grade] 方块生产工厂
- * 负责根据当前的 EngineState 生成对应的 Block 数据。
- * 让工具 (Tool) 只关注“位置”，让工厂关注“内容”。
- */
 export class BlockFactory {
     
-    /**
-     * 生成单个标准方块 (用于 Brush)
-     */
+    // [Fix] 辅助方法：兼容 string (旧) 和 object (新) 两种格式
+    private static getImageUrl(state: EngineState): string | null {
+        if (!state.activeImage) return null;
+        
+        // 如果是新架构的对象格式
+        if (typeof state.activeImage === 'object' && 'url' in state.activeImage) {
+            return state.activeImage.url;
+        }
+        
+        // 如果是旧架构的字符串格式 (直接 Base64)
+        if (typeof state.activeImage === 'string') {
+            return state.activeImage;
+        }
+        
+        return null;
+    }
+
     public static createBlock(
         state: EngineState, 
         x: number, 
@@ -24,12 +33,15 @@ export class BlockFactory {
             zIndex: 1
         };
 
-        if (state.fillMode === 'image' && state.activeImage) {
+        const imageUrl = this.getImageUrl(state);
+
+        // [Fix] 使用兼容处理后的 imageUrl 判断
+        if (state.fillMode === 'image' && imageUrl) {
             return {
                 ...baseBlock,
                 type: 'image',
-                imageUrl: state.activeImage,
-                color: '#ffffff' // 图片模式下，color 可作为底色
+                imageUrl: imageUrl,
+                color: '#ffffff'
             };
         } else {
             return {
@@ -40,21 +52,20 @@ export class BlockFactory {
         }
     }
 
-    /**
-     * 生成矩形区域方块 (用于 Rectangle)
-     */
     public static createRectBlock(
         state: EngineState,
         rect: { x: number, y: number, w: number, h: number }
     ): PixelBlock {
         const id = MathUtils.generateId('rect');
+        const imageUrl = this.getImageUrl(state);
         
-        if (state.fillMode === 'image' && state.activeImage) {
+        // [Fix] 使用兼容处理后的 imageUrl 判断
+        if (state.fillMode === 'image' && imageUrl) {
             return {
                 id,
                 ...rect,
                 type: 'image',
-                imageUrl: state.activeImage,
+                imageUrl: imageUrl,
                 color: '#ffffff'
             };
         } else {

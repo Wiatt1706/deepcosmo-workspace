@@ -1,12 +1,6 @@
 // src/engine/plugins/EditorToolsPlugin.ts
 import { IPlugin, IEngine, Vec2, ToolType } from '../types';
 import { BaseTool } from '../core/ToolBase';
-import { 
-    BrushTool, 
-    EraserTool, 
-    RectangleTool, 
-    PortalTool 
-} from '../tools/StandardTools';
 
 export class EditorToolsPlugin implements IPlugin {
   name = 'EditorTools';
@@ -15,78 +9,83 @@ export class EditorToolsPlugin implements IPlugin {
   private tools: Map<string, BaseTool> = new Map();
   private currentTool: BaseTool | null = null;
   
+  // [Change] 依赖注入：工具列表由外部传入
+  constructor(private initialTools: BaseTool[] = []) {}
+
   onInit(engine: IEngine) {
     this.engine = engine;
     
-    // 初始化时同步状态
-    this.engine.state.currentTool = 'brush'; 
-
-    this.registerTool(new BrushTool(engine));
-    this.registerTool(new EraserTool(engine));
-    this.registerTool(new RectangleTool(engine));
-    this.registerTool(new PortalTool(engine));
+    // 1. 注册传入的工具
+    this.initialTools.forEach(tool => this.registerTool(tool));
 
     // Input Events
     engine.events.on('input:mousedown', this.handleMouseDown);
     engine.events.on('input:mousemove', this.handleMouseMove);
     engine.events.on('input:mouseup', this.handleMouseUp);
-
-    // Command Events
     engine.events.on('tool:set', (name) => this.switchTool(name));
     
-    // Initialize tool
+    // 初始化默认工具
     this.switchTool(engine.state.currentTool);
   }
 
-  private registerTool(tool: BaseTool) {
+  // [Public API] 允许外部动态注册工具
+  public registerTool(tool: BaseTool) {
+      if (this.tools.has(tool.name)) {
+          return;
+      }
       this.tools.set(tool.name, tool);
   }
 
   private switchTool(name: ToolType) {
+      // Hand 逻辑 (View 模式)
       if (name === 'hand') {
-          if (this.currentTool) {
-              this.currentTool.onDeactivate();
-              this.currentTool = null;
-          }
+          this.deactivateCurrent();
           this.engine.canvas.style.cursor = 'grab';
           this.engine.state.currentTool = 'hand';
+          this.engine.requestRender(); 
           return;
       }
 
       const tool = this.tools.get(name);
       if (tool) {
-          if (this.currentTool) this.currentTool.onDeactivate();
+          this.deactivateCurrent();
           this.currentTool = tool;
           this.currentTool.onActivate();
           this.engine.state.currentTool = name;
+          this.engine.requestRender(); 
+      }
+  }
+
+  private deactivateCurrent() {
+      if (this.currentTool) {
+          this.currentTool.onDeactivate();
+          this.currentTool = null;
       }
   }
 
   private handleMouseDown = (worldPos: Vec2, e: MouseEvent) => {
-      if (this.engine.input.isSpacePressed) {
-          this.engine.canvas.style.cursor = 'grabbing';
-          return;
-      }
+      if (this.engine.input.isSpacePressed) return; 
+      
       if (this.currentTool) {
-          this.currentTool.onMouseDown(worldPos, e);
+          const processed = this.currentTool.onMouseDown(worldPos, e);
+          if (processed) this.engine.requestRender(); 
       }
   };
 
   private handleMouseMove = (worldPos: Vec2, e: MouseEvent) => {
       if (this.engine.input.isSpacePressed) return;
+      
       if (this.currentTool) {
-          this.currentTool.onMouseMove(worldPos, e);
+          const processed = this.currentTool.onMouseMove(worldPos, e);
+          // 移动时通常需要重绘 Overlay (比如画笔光标)
+          this.engine.requestRender(); 
       }
   };
 
   private handleMouseUp = (worldPos: Vec2, e: MouseEvent) => {
       if (this.currentTool) {
           this.currentTool.onMouseUp(worldPos, e);
-      }
-      if (this.engine.input.isSpacePressed) {
-          this.engine.canvas.style.cursor = 'grab';
-      } else if (this.currentTool) {
-          this.currentTool.onActivate();
+          this.engine.requestRender();
       }
   };
 

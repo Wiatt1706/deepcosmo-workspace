@@ -3,10 +3,7 @@ import { PixelBlock } from '../types';
 import { MathUtils } from '../utils/MathUtils';
 
 export class World {
-  // 正向索引：Chunk Key -> 方块列表
   private chunks: Map<string, PixelBlock[]> = new Map();
-  
-  // 反向索引：Block ID -> 它所在的 Chunk Key 集合
   private blockToChunksMap: Map<string, Set<string>> = new Map();
 
   public chunkSize: number;
@@ -19,16 +16,9 @@ export class World {
     return `${cx},${cy}`;
   }
 
-  /**
-   * [FIX] 优化后的添加方块逻辑
-   * 使用 EPSILON 处理边界，防止方块刚好在分界线上时被错误分配
-   */
   addBlock(block: PixelBlock) {
-    // 1. 计算 Chunk 覆盖范围
     const startCX = Math.floor(block.x / this.chunkSize);
     const startCY = Math.floor(block.y / this.chunkSize);
-    
-    // [FIX] 使用 EPSILON 替代 0.01，更加严谨
     const endCX = Math.floor((block.x + block.w - MathUtils.EPSILON) / this.chunkSize);
     const endCY = Math.floor((block.y + block.h - MathUtils.EPSILON) / this.chunkSize);
 
@@ -43,7 +33,6 @@ export class World {
           this.chunks.set(key, []);
         }
         
-        // [FIX] 深度防御：防止 ID 重复导致的逻辑错误
         const chunkBlocks = this.chunks.get(key)!;
         if (!chunkBlocks.find(b => b.id === block.id)) {
             chunkBlocks.push(block);
@@ -67,7 +56,6 @@ export class World {
         if (index !== -1) {
           blocks.splice(index, 1);
           removed = true;
-          // [FIX] 及时清理空 Chunk，防止内存泄漏
           if (blocks.length === 0) {
             this.chunks.delete(key);
           }
@@ -87,10 +75,9 @@ export class World {
     const chunk = this.chunks.get(key);
     if (!chunk) return null;
 
-    // 倒序查找 (Z-Order)
+    // Z-Order reverse lookup
     for (let i = chunk.length - 1; i >= 0; i--) {
       const b = chunk[i];
-      // [FIX] 严谨的 AABB 碰撞检测
       if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) {
         return b;
       }
@@ -98,6 +85,10 @@ export class World {
     return null;
   }
 
+  /**
+   * [Optimization] 渲染核心查询
+   * 增加了精确剔除，减少不必要的绘制
+   */
   queryBlocksInRect(left: number, top: number, right: number, bottom: number): PixelBlock[] {
     const results: PixelBlock[] = [];
     const seenIds = new Set<string>();
@@ -110,16 +101,19 @@ export class World {
     for (let cx = startCX; cx <= endCX; cx++) {
       for (let cy = startCY; cy <= endCY; cy++) {
         const key = this.getChunkKey(cx, cy);
-        const chunkData = this.chunks.get(key);
-        if (chunkData) {
-            // [FIX] 使用传统的 for 循环替代 for...of 以微弱提升高性能场景下的速度
-            for (let i = 0; i < chunkData.length; i++) {
-                const block = chunkData[i];
-                if (!seenIds.has(block.id)) {
-                    // [FIX] 可选：在此处增加精确的矩形相交检测，避免仅仅因为在 Chunk 内就被选中
-                    // 目前保留 MVP 逻辑以维持渲染性能 (多渲染一点比计算相交更便宜)
-                    results.push(block);
-                    seenIds.add(block.id);
+        const chunkBlocks = this.chunks.get(key);
+        
+        if (chunkBlocks) {
+            // [Optimization] 使用标准 for 循环提升遍历性能
+            for (let i = 0; i < chunkBlocks.length; i++) {
+                const b = chunkBlocks[i];
+                if (seenIds.has(b.id)) continue;
+
+                // [Crucial] AABB 精确剔除
+                // 确保只有真正与视口相交的方块才会被返回给渲染器
+                if (b.x < right && b.x + b.w > left && b.y < bottom && b.y + b.h > top) {
+                    results.push(b);
+                    seenIds.add(b.id);
                 }
             }
         }

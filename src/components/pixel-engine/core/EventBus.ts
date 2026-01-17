@@ -1,27 +1,25 @@
 // src/engine/core/EventBus.ts
 import { EngineEvents, IEventBus } from '../types';
 
-// 定义通用的处理器类型
 type Handler<T extends keyof EngineEvents> = (...args: EngineEvents[T]) => void;
 
 export class EventBus implements IEventBus {
-  // 存储监听器，Key 是事件名，Value 是函数数组
   private listeners: Map<string, Function[]> = new Map();
 
   /**
-   * 订阅事件 (强类型)
-   * TypeScript 会根据 event 的名称自动推断 handler 的参数类型
+   * 订阅事件
+   * @returnsUnsubscribe function
    */
-  on<K extends keyof EngineEvents>(event: K, handler: Handler<K>): void {
+  on<K extends keyof EngineEvents>(event: K, handler: Handler<K>): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
     this.listeners.get(event)!.push(handler);
+    
+    // [Optimization] 返回清理函数，方便 React useEffect 使用
+    return () => this.off(event, handler);
   }
 
-  /**
-   * 取消订阅 (强类型)
-   */
   off<K extends keyof EngineEvents>(event: K, handler: Handler<K>): void {
     const handlers = this.listeners.get(event);
     if (handlers) {
@@ -29,20 +27,14 @@ export class EventBus implements IEventBus {
     }
   }
 
-  /**
-   * 触发事件 (强类型)
-   * args 的类型必须与 EngineEvents[K] 匹配
-   */
   emit<K extends keyof EngineEvents>(event: K, ...args: EngineEvents[K]): void {
     const handlers = this.listeners.get(event);
     if (handlers) {
-      handlers.forEach(fn => fn(...args));
+      // 拷贝一份执行，防止执行过程中监听器列表变化导致的问题
+      [...handlers].forEach(fn => fn(...args));
     }
   }
 
-  /**
-   * 清空所有事件
-   */
   clear() {
     this.listeners.clear();
   }

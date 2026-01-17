@@ -8,6 +8,8 @@ export class InputSystem {
   public isDragging: boolean = false;
   public isSpacePressed: boolean = false;
 
+  // [Optimization] 缓存 DOMRect，避免在 mousemove 中导致 Layout Thrashing
+  private rectCache: DOMRect | null = null;
   private _handlers: { [key: string]: (e: any) => void } = {};
 
   constructor(
@@ -15,13 +17,33 @@ export class InputSystem {
     private camera: Camera,
     private events: IEventBus
   ) {
+    // 初始化时获取一次
+    this.updateRectCache();
     this.bindEvents();
   }
 
+  /**
+   * [Core] 更新 DOM 位置缓存
+   * 必须在 Resize 或 Scroll 时调用
+   */
+  public updateRectCache() {
+      this.rectCache = this.canvas.getBoundingClientRect();
+  }
+
   private updatePos(clientX: number, clientY: number) {
-    const rect = this.canvas.getBoundingClientRect();
-    this.mouseScreen = { x: clientX - rect.left, y: clientY - rect.top };
-    this.mouseWorld = this.camera.screenToWorld(this.mouseScreen.x, this.mouseScreen.y);
+    // 惰性兜底：如果缓存丢失，重新获取
+    if (!this.rectCache) {
+        this.updateRectCache();
+    }
+    
+    // [Optimization] 使用缓存计算，极快
+    if (this.rectCache) {
+        this.mouseScreen = { 
+            x: clientX - this.rectCache.left, 
+            y: clientY - this.rectCache.top 
+        };
+        this.mouseWorld = this.camera.screenToWorld(this.mouseScreen.x, this.mouseScreen.y);
+    }
   }
 
   private bindEvents() {
@@ -46,7 +68,6 @@ export class InputSystem {
       this.isDragging = true;
       this.events.emit('input:mousedown', this.mouseWorld, e);
     };
-    // [New] 双击事件
     this._handlers.dblclick = (e: MouseEvent) => {
       this.updatePos(e.clientX, e.clientY);
       this.events.emit('input:dblclick', this.mouseWorld, e);
@@ -62,7 +83,7 @@ export class InputSystem {
     window.addEventListener('mouseup', this._handlers.mouseup);
     
     this.canvas.addEventListener('mousedown', this._handlers.mousedown);
-    this.canvas.addEventListener('dblclick', this._handlers.dblclick); // [New]
+    this.canvas.addEventListener('dblclick', this._handlers.dblclick);
     this.canvas.addEventListener('wheel', this._handlers.wheel as any, { passive: false });
   }
 
@@ -73,7 +94,7 @@ export class InputSystem {
     window.removeEventListener('mouseup', this._handlers.mouseup);
     
     this.canvas.removeEventListener('mousedown', this._handlers.mousedown);
-    this.canvas.removeEventListener('dblclick', this._handlers.dblclick); // [New]
+    this.canvas.removeEventListener('dblclick', this._handlers.dblclick);
     this.canvas.removeEventListener('wheel', this._handlers.wheel as any);
   }
 }

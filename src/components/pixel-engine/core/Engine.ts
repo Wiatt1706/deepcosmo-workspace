@@ -1,19 +1,21 @@
+// src/engine/core/Engine.ts
 import { World } from './World';
 import { Camera } from './Camera';
 import { Renderer } from '../systems/Renderer';
 import { InputSystem } from '../systems/InputSystem';
+import { AssetSystem } from '../systems/AssetSystem';
 import { EventBus } from './EventBus';
-import { IEngine, IPlugin, EngineConfig, EngineState } from '../types';
+import { IEngine, IPlugin, EngineConfig, EngineState, IRenderer } from '../types';
 
 export class Engine implements IEngine {
-  public canvas: HTMLCanvasElement;
+  public canvas!: HTMLCanvasElement;
   public world: World;
   public camera: Camera;
   public events: EventBus;
   public input: InputSystem;
-  public renderer: Renderer;
+  public renderer: IRenderer;
+  public assets: AssetSystem;
   public config: EngineConfig;
-
   public state: EngineState;
 
   private isRunning: boolean = true;
@@ -21,57 +23,30 @@ export class Engine implements IEngine {
   private _boundLoop: (time: number) => void;
   private resizeObserver: ResizeObserver;
   private lastTime: number = 0;
+  private isDirty: boolean = true;
 
   constructor(config: EngineConfig) {
     this.config = config;
+    this.state = this.createInitialState();
+    this.setupDOM();
 
-    // 1. 初始化状态
-    this.state = {
-        currentTool: 'brush',
-        fillMode: 'color',       
-        activeColor: '#3b82f6',  
-        activeImage: null,
-        isContinuous: false,
-        isReadOnly: config.readOnly || false,
-        debugMode: false
-    };
-
-    // 2. DOM Setup [FIXED]
-    // 使用 "Absolute + Overflow Hidden" 策略防止出现滚动条
-    this.canvas = document.createElement('canvas');
-    
-    // 强制父容器建立定位上下文，并裁剪溢出
-    config.container.style.position = 'relative';
-    config.container.style.overflow = 'hidden';
-    
-    // Canvas 脱离文档流，填满容器
-    this.canvas.style.display = 'block';
-    this.canvas.style.position = 'absolute';
-    this.canvas.style.top = '0';
-    this.canvas.style.left = '0';
-    this.canvas.style.width = '100%';
-    this.canvas.style.height = '100%';
-    this.canvas.style.outline = 'none';
-    this.canvas.style.touchAction = 'none';
-
-    config.container.innerHTML = '';
-    config.container.appendChild(this.canvas);
-
-    // 3. Systems Setup
     this.events = new EventBus();
     this.world = new World(config.chunkSize || 128);
     this.camera = new Camera(); 
-    this.renderer = new Renderer(this.canvas, this.camera, this.world);
+    this.assets = new AssetSystem(this.events);
+    this.renderer = new Renderer(this.canvas, this.camera, this.world, this.assets);
     this.input = new InputSystem(this.canvas, this.camera, this.events);
 
-    // 4. Auto Resize
-    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver = new ResizeObserver(() => {
+        this.resize();
+        this.input.updateRectCache();
+        this.requestRender();
+    });
     this.resizeObserver.observe(config.container);
 
-    // 5. Interactions
     this.setupBuiltinInteractions();
+    this.setupRenderTriggers();
 
-    // 6. Loop
     this.resize();
     this._boundLoop = this.loop.bind(this);
     this.lastTime = performance.now();
@@ -80,19 +55,61 @@ export class Engine implements IEngine {
     this.events.emit('engine:ready');
   }
 
+  private setupRenderTriggers() {
+    this.events.on('input:mousemove', () => this.requestRender());
+    this.events.on('input:wheel', () => this.requestRender());
+    this.events.on('state:change', () => this.requestRender());
+    this.events.on('asset:loaded', () => this.requestRender());
+    this.events.on('history:undo', () => this.requestRender());
+    this.events.on('history:redo', () => this.requestRender());
+    this.events.on('tool:set', () => this.requestRender());
+  }
+
+  public requestRender() {
+      this.isDirty = true;
+  }
+
+  private createInitialState(): EngineState {
+      return {
+        currentTool: 'brush',
+        fillMode: 'color',       
+        activeColor: '#3b82f6',  
+        activeImage: null,
+        isContinuous: false,
+        isReadOnly: this.config.readOnly || false,
+        debugMode: false
+    };
+  }
+
+  private setupDOM() {
+    this.canvas = document.createElement('canvas');
+    const { container } = this.config;
+    container.style.position = 'relative';
+    container.style.overflow = 'hidden';
+    this.canvas.style.display = 'block';
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '0';
+    this.canvas.style.left = '0';
+    this.canvas.style.width = '100%';
+    this.canvas.style.height = '100%';
+    this.canvas.style.outline = 'none';
+    this.canvas.style.touchAction = 'none';
+    container.innerHTML = '';
+    container.appendChild(this.canvas);
+  }
+
   private setupBuiltinInteractions() {
-    // Zoom
     this.events.on('input:wheel', (e, screenPos) => {
        const zoomFactor = Math.exp(-e.deltaY * 0.001);
        this.camera.zoomBy(zoomFactor, screenPos.x, screenPos.y);
     });
 
-    // Pan (Space)
     this.events.on('input:mousemove', (worldPos, e) => {
        const isHandMode = this.input.isSpacePressed || (this.state.isReadOnly && !this.input.isSpacePressed);
        if (this.input.isDragging && isHandMode) {
              this.camera.panBy(e.movementX, e.movementY);
              this.canvas.style.cursor = 'grabbing';
+             this.requestRender();
        }
     });
     
@@ -102,9 +119,9 @@ export class Engine implements IEngine {
         } else {
              this.canvas.style.cursor = 'default';
         }
+        this.requestRender();
     });
 
-    // State Sync
     this.events.on('tool:set', (t) => { this.state.currentTool = t; });
     this.events.on('setting:continuous', (b) => { this.state.isContinuous = b; });
     
@@ -114,10 +131,10 @@ export class Engine implements IEngine {
         this.events.emit('state:change', { fillMode: 'color', activeColor: c });
     });
     
-    this.events.on('style:set-image', (img) => { 
+    this.events.on('style:set-image', (imgObj) => { 
         this.state.fillMode = 'image';
-        this.state.activeImage = img;
-        this.events.emit('state:change', { fillMode: 'image', activeImage: img });
+        this.state.activeImage = imgObj;
+        this.events.emit('state:change', { fillMode: 'image', activeImage: imgObj });
     });
   }
 
@@ -133,34 +150,51 @@ export class Engine implements IEngine {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
     this.lastTime = timestamp;
 
+    // 1. 更新逻辑
+    // [Fix] 使用公开方法判断相机状态
+    const wasCameraMoving = this.camera.isMoving();
     this.camera.update(dt);
+    const isCameraMoving = this.camera.isMoving();
+
+    if (isCameraMoving || wasCameraMoving) {
+        this.isDirty = true;
+    }
+
     this.plugins.forEach(p => p.onUpdate && p.onUpdate(dt));
 
-    this.renderer.clear();
-    this.renderer.drawWorld();
+    // 2. 渲染逻辑
+    if (this.isDirty) {
+        this.renderer.clear();
+        this.renderer.drawWorld();
 
-    this.renderer.ctx.save();
-    const dpr = window.devicePixelRatio || 1;
-    this.renderer.ctx.translate(this.canvas.width / dpr / 2, this.canvas.height / dpr / 2);
-    this.renderer.ctx.scale(this.camera.zoom, this.camera.zoom);
-    this.renderer.ctx.translate(-this.camera.x, -this.camera.y);
-    
-    this.plugins.forEach(p => p.onRender && p.onRender(this.renderer.ctx));
-    
-    this.events.emit('render:after', this.renderer.ctx);
-    this.renderer.ctx.restore();
+        const ctx = (this.renderer as any).ctx;
+        ctx.save();
+        const dpr = window.devicePixelRatio || 1;
+        ctx.translate(this.canvas.width / dpr / 2, this.canvas.height / dpr / 2);
+        ctx.scale(this.camera.zoom, this.camera.zoom);
+        ctx.translate(-this.camera.x, -this.camera.y);
+        
+        this.plugins.forEach(p => p.onRender && p.onRender(ctx));
+        
+        this.events.emit('render:after', ctx);
+        ctx.restore();
+
+        this.isDirty = false;
+    }
 
     requestAnimationFrame(this._boundLoop);
   }
 
   public resize() {
     this.renderer.resize();
+    this.requestRender();
   }
 
   public destroy() {
     this.isRunning = false;
     this.input.destroy();
     this.events.clear();
+    this.assets.clear();
     this.resizeObserver.disconnect();
     this.plugins.forEach(p => p.onDestroy && p.onDestroy());
     this.canvas.remove();

@@ -1,4 +1,8 @@
 // src/engine/types.ts
+import { AssetSystem } from './systems/AssetSystem';
+import { World } from './core/World';
+import { Camera } from './core/Camera';
+import { InputSystem } from './systems/InputSystem';
 
 export interface Vec2 {
   x: number;
@@ -20,8 +24,6 @@ export interface PixelBlock {
 }
 
 export type ToolType = 'hand' | 'brush' | 'eraser' | 'rectangle' | 'portal';
-
-// [New] 填充模式：决定当前工具生成的是纯色块还是图片块
 export type FillMode = 'color' | 'image';
 
 export interface ICommand {
@@ -31,12 +33,9 @@ export interface ICommand {
 
 export interface EngineState {
     currentTool: ToolType;
-    
-    // [Refactor] 材质/样式状态
     fillMode: FillMode;
     activeColor: string;
-    activeImage: string | null; // Base64 或 URL
-    
+    activeImage: { url: string; isUploading: boolean; originalFile?: File } | null;
     isContinuous: boolean;
     isReadOnly: boolean;
     debugMode: boolean;
@@ -53,10 +52,8 @@ export type EngineEvents = {
   
   'tool:set': [ToolType];
   'setting:continuous': [boolean];
-  
-  // [Refactor] 样式控制事件
   'style:set-color': [string];
-  'style:set-image': [string];
+  'style:set-image': [any]; // 这里 activeImage 的类型比较复杂，暂用 any 或保持一致
   
   'world:request-enter': [string, string, (() => void)?]; 
   'viewer:block-selected': [PixelBlock | null]; 
@@ -71,13 +68,20 @@ export type EngineEvents = {
   'history:state-change': [boolean, boolean];
   
   'state:change': [Partial<EngineState>];
+  'asset:loaded': [string]; 
 };
 
 export interface IEventBus {
-  on<K extends keyof EngineEvents>(event: K, handler: (...args: EngineEvents[K]) => void): void;
+  on<K extends keyof EngineEvents>(event: K, handler: (...args: EngineEvents[K]) => void): () => void;
   off<K extends keyof EngineEvents>(event: K, handler: (...args: EngineEvents[K]) => void): void;
   emit<K extends keyof EngineEvents>(event: K, ...args: EngineEvents[K]): void;
   clear(): void;
+}
+
+export interface IRenderer {
+    resize(): void;
+    drawWorld(): void;
+    clear(): void;
 }
 
 export interface EngineConfig {
@@ -89,16 +93,23 @@ export interface EngineConfig {
 
 export interface IEngine {
   canvas: HTMLCanvasElement;
-  world: any;
-  camera: any; 
-  input: any; 
-  renderer: any;
+  
+  // [Fix] 使用强类型替代 any
+  world: World;
+  camera: Camera; 
+  input: InputSystem; 
+  renderer: IRenderer;
   events: IEventBus; 
+  assets: AssetSystem;
+  
   config: EngineConfig;
   state: EngineState;
   
   resize(): void;
   destroy(): void;
+  
+  // [New] 被动渲染请求方法
+  requestRender(): void;
 }
 
 export interface IPlugin {

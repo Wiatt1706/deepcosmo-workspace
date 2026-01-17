@@ -17,10 +17,10 @@ import {
   Minus,
   Plus,
   RotateCcw,
-  Loader2
+  Loader2 // [New] 引入 Loading 图标
 } from 'lucide-react';
 
-// --- 子组件定义 (Sub Components) ---
+// --- 子组件定义 (保持样式不变) ---
 
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <div className="flex flex-col gap-3 mb-4">
@@ -43,7 +43,8 @@ const ToolButton = ({ active, icon: Icon, onClick, className, label, disabled }:
       className
     )}
   >
-    <Icon size={20} strokeWidth={active ? 2.5 : 2} />
+    {/* [Change] 如果 Icon 本身传入的是 Loader2，我们会让它转起来，或者在这里控制 */}
+    <Icon size={20} strokeWidth={active ? 2.5 : 2} className={cn(label === "Uploading" && "animate-spin")} />
     <span className="text-[10px] font-medium">{label}</span>
   </button>
 );
@@ -97,6 +98,9 @@ export function EditorToolbar() {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [mounted, setMounted] = useState(false);
+  
+  // [New] 上传状态，用于 UI 反馈
+  const [isUploading, setIsUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -115,10 +119,14 @@ export function EditorToolbar() {
         if (state.activeColor) setActiveColor(state.activeColor);
     };
 
+    // [UX] 可选：监听资源加载完毕事件
+    const onAssetLoaded = () => setIsUploading(false);
+
     events.on('history:state-change', onHistoryChange);
     events.on('tool:set', onToolSet);
     events.on('setting:continuous', onSettingChange);
     events.on('state:change', onStateChange);
+    events.on('asset:loaded', onAssetLoaded);
 
     // Initial Sync
     setActiveTool(engine.state.currentTool);
@@ -131,6 +139,7 @@ export function EditorToolbar() {
         events.off('tool:set', onToolSet);
         events.off('setting:continuous', onSettingChange);
         events.off('state:change', onStateChange);
+        events.off('asset:loaded', onAssetLoaded);
     };
   }, [events, engine]);
 
@@ -139,15 +148,48 @@ export function EditorToolbar() {
   const handleColorChange = (c: string) => events?.emit('style:set-color', c);
   const toggleContinuous = () => events?.emit('setting:continuous', !isContinuous);
   
+  // [New] 核心修改：对接 AssetSystem
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !engine || !events) return;
+
+      setIsUploading(true);
+      
+      try {
+          // 1. 调用引擎的资源系统 (支持本地 Base64 / 线上 OSS)
+          const url = await engine.assets.uploadAsset(file);
+          
+          // 2. 构造符合新架构的对象结构
+          const imageState = {
+              url: url,
+              isUploading: false,
+              originalFile: file
+          };
+
+          // 3. 通知引擎切换
+          events.emit('style:set-image', imageState);
+
+      } catch (error) {
+          console.error("Upload failed:", error);
+      } finally {
+          setIsUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+  };
+
   const handleZoom = (delta: number) => {
     if (!engine) return;
     const center = { x: engine.canvas.width / 2, y: engine.canvas.height / 2 };
     const factor = delta > 0 ? 1.2 : 0.8;
     engine.camera.zoomBy(factor, center.x, center.y);
+    engine.requestRender(); // 显式重绘
   };
   
   const handleResetView = () => {
-      engine?.camera.teleport(0, 0, 1);
+      if (engine) {
+          engine.camera.teleport(0, 0, 1);
+          engine.requestRender();
+      }
   };
 
   const handleUndo = () => events?.emit('history:undo');
@@ -205,13 +247,15 @@ export function EditorToolbar() {
             className={activeTool === 'portal' ? "!bg-purple-600 !border-purple-600" : ""}
           />
 
-          {/* Image Upload (Material Button) */}
-          {/* [FIX] Active 状态现在绑定到 fillMode，而不是 activeTool */}
+          {/* Image Upload Button (Keeping Original Style) */}
           <ToolButton 
             active={fillMode === 'image'} 
             onClick={() => fileInputRef.current?.click()} 
-            icon={ImageIcon} 
-            label="Image"
+            // [Change] 如果正在上传，显示 Loader2，否则显示 ImageIcon
+            icon={isUploading ? Loader2 : ImageIcon} 
+            // [Change] 如果正在上传，显示 Uploading...
+            label={isUploading ? "Uploading" : "Image"}
+            disabled={isUploading}
             className={fillMode === 'image' ? "!bg-green-600 !border-green-600 !text-white" : ""}
           />
           <input 
@@ -219,18 +263,9 @@ export function EditorToolbar() {
             type="file" 
             hidden 
             accept="image/*" 
-            onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file && events) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        if (ev.target?.result) events.emit('style:set-image', ev.target.result as string);
-                    };
-                    reader.readAsDataURL(file);
-                }
-                e.target.value = ''; 
-            }} 
-         /> 
+            // [Change] 绑定新的 handleImageUpload
+            onChange={handleImageUpload} 
+          /> 
         </div>
       </Section>
 
@@ -238,7 +273,7 @@ export function EditorToolbar() {
       <Section title="Properties">
         <div className="space-y-3 bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
             
-            {/* Color Picker */}
+            {/* Color Picker (样式不变) */}
             <div className="flex items-center justify-between group cursor-pointer">
                 <span className="text-xs text-gray-500 font-medium">Color</span>
                 <div className="relative">
