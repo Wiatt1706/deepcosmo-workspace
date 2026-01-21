@@ -1,8 +1,8 @@
 // src/engine/core/World.ts
-import { PixelBlock } from '../types';
+import { IWorld, PixelBlock } from '../types';
 import { MathUtils } from '../utils/MathUtils';
 
-export class World {
+export class World implements IWorld{
   private chunks: Map<string, PixelBlock[]> = new Map();
   private blockToChunksMap: Map<string, Set<string>> = new Map();
 

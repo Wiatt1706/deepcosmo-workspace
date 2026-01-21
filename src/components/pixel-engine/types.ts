@@ -4,9 +4,63 @@ import { World } from './core/World';
 import { Camera } from './core/Camera';
 import { InputSystem } from './systems/InputSystem';
 
+// ==========================================
+// 1. 基础类型与渲染上下文
+// ==========================================
+
 export interface Vec2 {
   x: number;
   y: number;
+}
+
+// [New] 将渲染上下文定义在 types 中，方便各处引用
+export interface RenderContext {
+    ctx: CanvasRenderingContext2D;
+    viewRect: { left: number; top: number; right: number; bottom: number };
+    zoom: number;
+}
+
+// [New] 增加 IWorld 接口
+export interface IWorld {
+    chunkSize: number;
+    // 增删改查
+    addBlock(block: PixelBlock): void;
+    removeBlockById(id: string): boolean;
+    getBlockAt(x: number, y: number): PixelBlock | null;
+    
+    // 核心查询 (供渲染器和物理使用)
+    queryBlocksInRect(left: number, top: number, right: number, bottom: number): PixelBlock[];
+    
+    // 序列化
+    toJSON(): string;
+    fromJSON(json: string): void;
+    clear(): void;
+}
+
+// [New] 定义 Layer 接口，避免 Renderer 依赖具体类
+export interface ILayer {
+    name: string;
+    zIndex: number;
+    isVisible: boolean;
+    render(context: RenderContext): void;
+    onInit?(): void;
+    onDestroy?(): void;
+}
+
+// [New] 定义 LayerManager 接口
+export interface ILayerManager {
+    add(layer: ILayer): void;
+    remove(name: string): void;
+    get(name: string): ILayer | undefined;
+    clear(): void;
+}
+
+export interface EngineSystems {
+    world?: IWorld; // 改为接口
+    renderer?: IRenderer; // 改为接口
+    input?: InputSystem;
+    assets?: AssetSystem;
+    camera?: Camera;
 }
 
 export interface PixelBlock {
@@ -53,7 +107,7 @@ export type EngineEvents = {
   'tool:set': [ToolType];
   'setting:continuous': [boolean];
   'style:set-color': [string];
-  'style:set-image': [any]; // 这里 activeImage 的类型比较复杂，暂用 any 或保持一致
+  'style:set-image': [any];
   
   'world:request-enter': [string, string, (() => void)?]; 
   'viewer:block-selected': [PixelBlock | null]; 
@@ -78,10 +132,16 @@ export interface IEventBus {
   clear(): void;
 }
 
+// ==========================================
+// 2. 更新后的核心接口
+// ==========================================
+
 export interface IRenderer {
     resize(): void;
-    drawWorld(): void;
-    clear(): void;
+    // [Change] 移除 drawWorld, clear，改为 draw 和 layers
+    draw(): void;
+    ctx: CanvasRenderingContext2D; // 暴露 ctx 供插件使用
+    layers: ILayerManager;         // 暴露图层管理器接口
 }
 
 export interface EngineConfig {
@@ -93,23 +153,21 @@ export interface EngineConfig {
 
 export interface IEngine {
   canvas: HTMLCanvasElement;
-  
-  // [Fix] 使用强类型替代 any
-  world: World;
+  world: IWorld;
   camera: Camera; 
   input: InputSystem; 
-  renderer: IRenderer;
+  renderer: IRenderer; // 这里现在引用的是更新后的 IRenderer
   events: IEventBus; 
   assets: AssetSystem;
-  
   config: EngineConfig;
   state: EngineState;
   
   resize(): void;
   destroy(): void;
-  
-  // [New] 被动渲染请求方法
   requestRender(): void;
+  
+  // 方便插件注册
+  registerPlugin(plugin: IPlugin): void;
 }
 
 export interface IPlugin {
