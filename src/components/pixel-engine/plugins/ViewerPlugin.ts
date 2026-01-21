@@ -131,7 +131,7 @@ export class ViewerPlugin implements IPlugin {
                this.hoveredBlock = null;
                this.selectedBlock = null;
                // 此时可能需要再次触发一次 render 以避免一帧的黑屏
-               this.engine.renderer.drawWorld();
+               this.engine.renderer.draw();
            }
        );
     }
