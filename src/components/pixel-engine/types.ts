@@ -1,8 +1,8 @@
 // src/engine/types.ts
 import { AssetSystem } from './systems/AssetSystem';
-import { World } from './core/World';
 import { Camera } from './core/Camera';
 import { InputSystem } from './systems/InputSystem';
+import { SelectionSystem } from './systems/SelectionSystem';
 
 // ==========================================
 // 1. 基础类型与渲染上下文
@@ -61,6 +61,23 @@ export interface EngineSystems {
     input?: InputSystem;
     assets?: AssetSystem;
     camera?: Camera;
+    selection?: SelectionSystem;
+}
+
+// [Data] 选区矩形 (世界坐标)
+export interface SelectionRect {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+
+// [Data] 剪贴板数据结构
+export interface ClipboardData {
+    source: 'pixel-engine';
+    width: number;
+    height: number;
+    blocks: PixelBlock[]; // 存储相对坐标的方块
 }
 
 export interface PixelBlock {
@@ -77,7 +94,7 @@ export interface PixelBlock {
   zIndex?: number;
 }
 
-export type ToolType = 'hand' | 'brush' | 'eraser' | 'rectangle' | 'portal';
+export type ToolType = 'hand' | 'brush' | 'eraser' | 'rectangle' | 'portal' | 'rectangle-select';
 export type FillMode = 'color' | 'image';
 
 export interface ICommand {
@@ -123,6 +140,11 @@ export type EngineEvents = {
   
   'state:change': [Partial<EngineState>];
   'asset:loaded': [string]; 
+  
+  'selection:change': [SelectionRect | null]; 
+  'selection:move': [SelectionRect]; // 选区移动时触发
+  'selection:copy': [];
+  'selection:paste': [ClipboardData];
 };
 
 export interface IEventBus {
@@ -161,13 +183,15 @@ export interface IEngine {
   assets: AssetSystem;
   config: EngineConfig;
   state: EngineState;
-  
+  selection: SelectionSystem;
+
   resize(): void;
   destroy(): void;
   requestRender(): void;
   
   // 方便插件注册
   registerPlugin(plugin: IPlugin): void;
+  
 }
 
 export interface IPlugin {

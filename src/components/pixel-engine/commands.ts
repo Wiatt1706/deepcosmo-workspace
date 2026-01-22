@@ -1,7 +1,6 @@
-// src/engine/commands.ts
-import { ICommand, PixelBlock } from './types';
+import { ICommand, PixelBlock, IWorld } from './types';
 
-// [New] 批量命令容器：将多个微小操作合并为一个历史记录
+// 批量命令容器
 export class BatchCommand implements ICommand {
     constructor(private commands: ICommand[]) {}
 
@@ -10,7 +9,6 @@ export class BatchCommand implements ICommand {
     }
 
     undo() {
-        // 撤销时需要反序执行
         for (let i = this.commands.length - 1; i >= 0; i--) {
             this.commands[i].undo();
         }
@@ -22,7 +20,7 @@ export class BatchCommand implements ICommand {
 }
 
 export class AddBlockCommand implements ICommand {
-    constructor(private world: any, private block: PixelBlock) {}
+    constructor(private world: IWorld, private block: PixelBlock) {}
 
     execute() {
         this.world.addBlock(this.block);
@@ -36,7 +34,8 @@ export class AddBlockCommand implements ICommand {
 export class RemoveBlockCommand implements ICommand {
     private removedBlock: PixelBlock | null = null;
 
-    constructor(private world: any, private x: number, private y: number) {}
+    // [Fix] 使用 IWorld 接口
+    constructor(private world: IWorld, private x: number, private y: number) {}
 
     execute() {
         // 移除前先获取，以便撤销

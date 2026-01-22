@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useRef } from "react";
 import { Engine } from "./core/Engine";
-import { World } from "./core/World"; // 默认 World
+import { World } from "./core/World"; 
 import { EditorToolsPlugin } from "./plugins/EditorToolsPlugin";
 import { HistoryPlugin } from "./plugins/HistoryPlugin";
 import { NestedWorldPlugin } from "./plugins/NestedWorldPlugin";
@@ -12,6 +12,9 @@ import {
     RectangleTool, 
     PortalTool 
 } from "./tools/StandardTools";
+// [New] 导入选区工具
+import { SelectionTool } from "./tools/SelectionTool";
+
 import { usePixelEngine } from "./PixelContext";
 import { EditorMode } from "@/app/[locale]/(main)/worlds/_lib/modeStore";
 
@@ -27,8 +30,6 @@ export default function PixelCanvas({ mode }: Props) {
 
     useEffect(() => {
         if (!containerRef.current || isInitializing.current) return;
-        // 如果模式改变，我们销毁旧引擎重建新引擎
-        // (实际项目中也可以选择不销毁，而是热切换 Plugin，这里为了演示 DI 选择重建)
         if (engineInstanceRef.current) {
              engineInstanceRef.current.destroy();
              engineInstanceRef.current = null;
@@ -36,31 +37,27 @@ export default function PixelCanvas({ mode }: Props) {
 
         isInitializing.current = true;
 
-        // 1. 配置
         const config = {
             container: containerRef.current,
             backgroundColor: mode === 'editor' ? '#111827' : '#000000',
             readOnly: mode === 'project',
         };
 
-        // 2. [DI] 组装系统
-        // 在这里，你可以根据 mode 选择不同的 World 实现或 Input 实现
-        // 例如：浏览模式下，可以使用一个只读的、内存占有率更低的 OptimizedWorld
         const systems = {
-            world: new World(128), // 这里以后可以换成 new QuadTreeWorld()
-            // input: mode === 'mobile' ? new TouchInputSystem(...) : undefined
+            // 这里使用我们新的高性能 SpatialHashWorld
+            world: new World(128),
         };
 
-        // 3. 注入
         const engine = new Engine(config, systems);
 
-        // 4. 注册插件 (这也是一种 DI，功能注入)
         if (mode === 'editor') {
             const editorPlugin = new EditorToolsPlugin([
                 new BrushTool(engine),
                 new EraserTool(engine),
                 new RectangleTool(engine),
-                new PortalTool(engine)
+                new PortalTool(engine),
+                // [New] 注册选区工具
+                new SelectionTool(engine)
             ]);
             
             engine.registerPlugin(editorPlugin);
