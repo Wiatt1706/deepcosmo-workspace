@@ -1,29 +1,26 @@
 import { BaseTool } from '../core/ToolBase';
-import { Vec2 } from '../types';
+import { Vec2, ICommand } from '../types';
 import { AddBlockCommand, RemoveBlockCommand, BatchCommand } from '../commands';
 import { MathUtils } from '../utils/MathUtils';
 import { BlockFactory } from '../utils/BlockFactory';
 
+// --- Helper ---
 const isSameGrid = (p1: Vec2, p2: Vec2, size: number) => {
     return MathUtils.snap(p1.x, size) === MathUtils.snap(p2.x, size) &&
            MathUtils.snap(p1.y, size) === MathUtils.snap(p2.y, size);
 };
 
 // ==========================================
-// 1. 画笔工具
+// 1. 画笔工具 (Brush Tool) - 防重叠
 // ==========================================
 export class BrushTool extends BaseTool {
     name = 'brush';
     private isDrawing = false;
-    private batchCommands: any[] = []; // 使用 ICommand[] 需导入接口，这里暂用 any[] 简化或补全 imports
+    private batchCommands: ICommand[] = [];
     private lastGridPos: Vec2 | null = null;
 
-    onActivate() {
-        // [Interaction] 游标样式现在由 InputSystem 或 Plugin 管理，
-        // 但工具自己设置一次也是个双保险
-        this.engine.canvas.style.cursor = 'crosshair';
-    }
-
+    onActivate() { this.engine.canvas.style.cursor = 'crosshair'; }
+    
     onDeactivate() {
         this.isDrawing = false;
         this.batchCommands = [];
@@ -46,49 +43,61 @@ export class BrushTool extends BaseTool {
     }
 
     onMouseUp(): boolean {
-        if (this.isDrawing) {
-            if (this.batchCommands.length > 0) {
-                const batch = new BatchCommand(this.batchCommands);
-                // [History] 提交完整的批量操作
-                this.engine.events.emit('history:push', batch, true);
-            }
+        if (this.isDrawing && this.batchCommands.length > 0) {
+            const batch = new BatchCommand(this.batchCommands);
+            this.engine.events.emit('history:push', batch, true);
         }
         this.isDrawing = false;
         this.batchCommands = [];
         return false;
     }
 
-    // 这里的 ctx 已经是 transform 过的，可以直接画
     onRender(ctx: CanvasRenderingContext2D) {
-        // 获取鼠标的世界坐标
         const mouse = this.engine.input.mouseWorld;
         const size = this.getGridSize();
         const gx = MathUtils.snap(mouse.x, size);
         const gy = MathUtils.snap(mouse.y, size);
         const state = this.engine.state;
 
-        // 绘制预览框 (Ghost)
-        if (state.fillMode === 'image' && state.activeImage) {
-            ctx.strokeStyle = '#22c55e';
+        // [Visual Feedback] 如果当前点已被占用，显示红色边框提示
+        const isBlocked = this.engine.world.isPointOccupied(gx + size/2, gy + size/2);
+
+        if (isBlocked) {
+            ctx.strokeStyle = '#ef4444'; // Red
             ctx.lineWidth = 2 / this.engine.camera.zoom;
             ctx.strokeRect(gx, gy, size, size);
-        } else {
-            ctx.fillStyle = state.activeColor + '4D'; // 30% 透明度
+            // 占用时依然显示一点填充，但用红色警示
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
             ctx.fillRect(gx, gy, size, size);
-            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-            ctx.lineWidth = 1 / this.engine.camera.zoom;
-            ctx.strokeRect(gx, gy, size, size);
+        } else {
+            // 正常预览
+            if (state.fillMode === 'image' && state.activeImage) {
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 2 / this.engine.camera.zoom;
+                ctx.strokeRect(gx, gy, size, size);
+            } else {
+                ctx.fillStyle = state.activeColor + '4D'; // Transparent
+                ctx.fillRect(gx, gy, size, size);
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 1 / this.engine.camera.zoom;
+                ctx.strokeRect(gx, gy, size, size);
+            }
         }
     }
 
     private paint(pos: Vec2) {
         const size = this.getGridSize();
-        // 简单的防抖动
         if (this.lastGridPos && isSameGrid(pos, this.lastGridPos, size)) return;
         
         const gx = MathUtils.snap(pos.x, size);
         const gy = MathUtils.snap(pos.y, size);
         this.lastGridPos = { x: gx, y: gy };
+
+        // [Anti-Overlap] 严格检测：只在空白处绘制
+        // 使用中心点检测，避免边缘浮点误差
+        if (this.engine.world.isPointOccupied(gx + size/2, gy + size/2)) {
+            return; // 遇到障碍物，跳过
+        }
 
         const block = BlockFactory.createBlock(
             this.engine.state,
@@ -102,12 +111,12 @@ export class BrushTool extends BaseTool {
 }
 
 // ==========================================
-// 2. 橡皮擦工具
+// 2. 橡皮擦工具 (Eraser Tool) - 保持破坏性
 // ==========================================
 export class EraserTool extends BaseTool {
     name = 'eraser';
     private isErasing = false;
-    private batchCommands: any[] = [];
+    private batchCommands: ICommand[] = [];
     private lastGridPos: Vec2 | null = null;
 
     onActivate() { this.engine.canvas.style.cursor = 'cell'; }
@@ -144,8 +153,7 @@ export class EraserTool extends BaseTool {
         const gx = MathUtils.snap(mouse.x, size);
         const gy = MathUtils.snap(mouse.y, size);
 
-        // 红色警告框
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; // Red-500
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; // Red tint
         ctx.fillRect(gx, gy, size, size);
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 1 / this.engine.camera.zoom;
@@ -160,8 +168,8 @@ export class EraserTool extends BaseTool {
         const gy = MathUtils.snap(pos.y, size);
         this.lastGridPos = { x: gx, y: gy };
 
-        // 使用 RemoveBlockCommand，它会查找并删除
-        // 这里的坐标稍微偏移一点点以确保选中中心 (gx + 1)
+        // 橡皮擦不需要防重叠，它的目的就是移除
+        // 使用 gx+1, gy+1 稍微偏移以确保命中方块内部
         const cmd = new RemoveBlockCommand(this.engine.world, gx + 1, gy + 1);
         cmd.execute();
         this.batchCommands.push(cmd);
@@ -169,7 +177,7 @@ export class EraserTool extends BaseTool {
 }
 
 // ==========================================
-// 3. 矩形工具 (保持原样，逻辑依然适用)
+// 3. 矩形工具 (Rectangle Tool) - 防重叠
 // ==========================================
 export class RectangleTool extends BaseTool {
     name = 'rectangle';
@@ -189,13 +197,20 @@ export class RectangleTool extends BaseTool {
         if (this.dragStart) {
             const rect = this.calcRect(this.dragStart, pos);
             if (rect.w > 0 && rect.h > 0) {
-                const block = BlockFactory.createRectBlock(
-                    this.engine.state,
-                    rect
-                );
-                // 矩形是一个单独的 AddBlockCommand
-                const cmd = new AddBlockCommand(this.engine.world, block);
-                this.engine.events.emit('history:push', cmd);
+                
+                // [Anti-Overlap] 矩形区域严格检测
+                if (this.engine.world.isRegionOccupied(rect.x, rect.y, rect.w, rect.h)) {
+                    console.warn("[Rectangle] Creation blocked by existing blocks.");
+                    // Optional: Trigger UI toast here
+                } else {
+                    // 区域为空，允许创建
+                    const block = BlockFactory.createRectBlock(
+                        this.engine.state,
+                        rect
+                    );
+                    const cmd = new AddBlockCommand(this.engine.world, block);
+                    this.engine.events.emit('history:push', cmd);
+                }
             }
             this.dragStart = null;
             return true;
@@ -204,30 +219,37 @@ export class RectangleTool extends BaseTool {
     }
 
     onRender(ctx: CanvasRenderingContext2D) {
-        // 只有拖拽时才画预览框
         if (this.dragStart && this.engine.input.isDragging) {
             const mouse = this.engine.input.mouseWorld;
             const rect = this.calcRect(this.dragStart, mouse);
             const state = this.engine.state;
 
-            // 虚线边框
-            ctx.setLineDash([4 / this.engine.camera.zoom, 4 / this.engine.camera.zoom]);
-            
-            if (state.fillMode === 'image') {
-                ctx.strokeStyle = '#22c55e';
-                ctx.lineWidth = 2 / this.engine.camera.zoom;
-                ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+            // [Visual Feedback] 实时冲突检测
+            const isBlocked = this.engine.world.isRegionOccupied(rect.x, rect.y, rect.w, rect.h);
+
+            if (isBlocked) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; // Red Warning
+                ctx.strokeStyle = '#ef4444';
+            } else if (state.fillMode === 'image') {
+                ctx.strokeStyle = '#22c55e'; // Green for image
+                ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
             } else {
                 ctx.fillStyle = state.activeColor;
-                ctx.globalAlpha = 0.5;
-                ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-                ctx.globalAlpha = 1.0;
                 ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 2 / this.engine.camera.zoom;
-                ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
             }
+
+            // 如果被阻挡，强制半透明
+            if (!isBlocked && state.fillMode !== 'image') {
+                ctx.globalAlpha = 0.5;
+            } else if (isBlocked) {
+                ctx.globalAlpha = 0.8;
+            }
+
+            ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+            ctx.globalAlpha = 1.0;
             
-            ctx.setLineDash([]); // Reset
+            ctx.lineWidth = 2 / this.engine.camera.zoom;
+            ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
         }
     }
 
@@ -246,21 +268,34 @@ export class RectangleTool extends BaseTool {
     }
 }
 
-// PortalTool 逻辑类似，略过不表，以上修改已足够保证核心一致性
-// ...
+// ==========================================
+// 4. 传送门工具 (Portal Tool) - 防重叠
+// ==========================================
 export class PortalTool extends BaseTool {
     name = 'portal';
+
     onActivate() { this.engine.canvas.style.cursor = 'alias'; }
     onDeactivate() {}
+
     onMouseDown(pos: Vec2): boolean {
         const size = this.getGridSize();
         const gx = MathUtils.snap(pos.x, size);
         const gy = MathUtils.snap(pos.y, size);
-        const newWorldId = MathUtils.generateId('world');
+        
+        // Portal 固定为 2x2 网格大小
+        const w = size * 2;
+        const h = size * 2;
 
+        // [Anti-Overlap] 检测
+        if (this.engine.world.isRegionOccupied(gx, gy, w, h)) {
+            console.warn("Portal blocked.");
+            return true;
+        }
+
+        const newWorldId = MathUtils.generateId('world');
         const cmd = new AddBlockCommand(this.engine.world, {
             id: MathUtils.generateId('portal'),
-            x: gx, y: gy, w: size * 2, h: size * 2,
+            x: gx, y: gy, w: w, h: h,
             color: '#a855f7',
             type: 'nested',
             targetWorldId: newWorldId,
@@ -271,17 +306,31 @@ export class PortalTool extends BaseTool {
         this.engine.events.emit('tool:set', 'hand');
         return true;
     }
+
     onMouseMove(): boolean { return false; }
     onMouseUp(): boolean { return false; }
+
     onRender(ctx: CanvasRenderingContext2D) {
         const mouse = this.engine.input.mouseWorld;
         const size = this.getGridSize();
         const gx = MathUtils.snap(mouse.x, size);
         const gy = MathUtils.snap(mouse.y, size);
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.5)';
-        ctx.fillRect(gx, gy, size * 2, size * 2);
-        ctx.strokeStyle = '#fff';
+        const w = size * 2;
+        const h = size * 2;
+        
+        // [Visual Feedback] 冲突检测
+        const isBlocked = this.engine.world.isRegionOccupied(gx, gy, w, h);
+
+        if (isBlocked) {
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'; // Red
+            ctx.strokeStyle = '#ef4444';
+        } else {
+            ctx.fillStyle = 'rgba(168, 85, 247, 0.5)'; // Purple
+            ctx.strokeStyle = '#fff';
+        }
+
+        ctx.fillRect(gx, gy, w, h);
         ctx.lineWidth = 1 / this.engine.camera.zoom;
-        ctx.strokeRect(gx, gy, size * 2, size * 2);
+        ctx.strokeRect(gx, gy, w, h);
     }
 }

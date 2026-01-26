@@ -1,15 +1,10 @@
+// src/layers/SelectionLayer.ts
+
 import { Layer, RenderContext } from '../core/Layer';
 import { IEngine } from '../types';
 
-/**
- * [Layer] 选区渲染层
- * 职责：
- * 1. 绘制“蚂蚁线”动画 (Marching Ants)。
- * 2. 绘制粘贴/移动过程中的预览块 (Lifted Preview)。
- */
 export class SelectionLayer extends Layer {
     constructor(engine: IEngine) {
-        // zIndex 100: 在方块(10)之上，在工具UI(200)之下
         super(engine, 'selection', 100);
     }
 
@@ -17,43 +12,81 @@ export class SelectionLayer extends Layer {
         const selection = this.engine.selection.currentSelection;
         if (!selection) return;
 
-        // --- 1. 绘制选区边界 (Marching Ants) ---
-        ctx.save();
+        // 1. Lifted Preview (Cache)
+        if (this.engine.selection.isLifted) {
+            const cache = this.engine.selection.getPreviewCanvas();
+            if (cache) {
+                // [Geek Style] 移除阴影，只绘制纯净的像素内容
+                ctx.save();
+                
+                // 绘制浮起内容
+                ctx.drawImage(cache, selection.x, selection.y);
+                
+                // 可选：如果希望即便浮起了也有个淡淡的虚框表示边界，可以保留下面这行
+                // ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
+                
+                ctx.restore();
+            }
+        } 
         
-        // 动态计算虚线偏移，产生流动效果
-        // performance.now() 毫秒级时间戳，除以 50 控制速度
-        const dashOffset = - (performance.now() / 40) % 16;
-        
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1 / zoom; // 保持 1px 细线
-        ctx.setLineDash([4 / zoom, 4 / zoom]); // 虚线间隔随缩放调整
-        ctx.lineDashOffset = dashOffset / zoom;
-        
-        // 绘制白线
-        ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
-        
-        // 绘制黑线 (反色)，确保在任何背景下可见
-        ctx.strokeStyle = '#000';
-        ctx.lineDashOffset = (dashOffset / zoom) + (4 / zoom); 
-        ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
-        
-        // 绘制尺寸标签 (可选)
-        if (zoom > 1) {
-            ctx.fillStyle = '#fff';
-            ctx.font = `${10/zoom}px monospace`;
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(
-                `${selection.w}x${selection.h}`, 
-                selection.x, 
-                selection.y - 2/zoom
+        // 2. Discrete Selection Highlight (Static 状态)
+        else if (this.engine.selection.selectedIds.size > 0) {
+            ctx.save();
+            const blocks = this.engine.world.queryBlocksInRect(
+                selection.x, selection.y, 
+                selection.x + selection.w, selection.y + selection.h
             );
+            const ids = this.engine.selection.selectedIds;
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 1 / zoom;
+            
+            ctx.beginPath();
+            for (const b of blocks) {
+                if (ids.has(b.id)) {
+                    ctx.rect(b.x, b.y, b.w, b.h);
+                }
+            }
+            ctx.stroke();
+            ctx.restore();
         }
 
-        ctx.restore();
+        // 3. Marching Ants (蚂蚁线框)
+        ctx.save();
+        const dashOffset = - (performance.now() / 40) % 16;
+        ctx.lineWidth = 1 / zoom;
+        
+        const isMulti = this.engine.selection.selectedIds.size > 1;
+        ctx.strokeStyle = isMulti ? '#60a5fa' : '#fff'; 
+        
+        // 使用 round 确保边框锐利，不模糊
+        // 偏移 0.5px 是 Canvas 绘制 1px 线条变清晰的技巧，但在缩放下可能不需要，视情况而定
+        const rx = Math.round(selection.x);
+        const ry = Math.round(selection.y);
+        const rw = Math.round(selection.w);
+        const rh = Math.round(selection.h);
 
-        // --- 2. (可选) 绘制 Lifted Preview ---
-        // 如果你需要在这里渲染正在被拖拽的像素（例如移动选区时），
-        // 可以遍历 engine.selection.liftedBlocks 进行绘制。
-        // 目前我们暂只画框。
+        ctx.setLineDash([4 / zoom, 4 / zoom]);
+        ctx.lineDashOffset = dashOffset / zoom;
+        ctx.strokeRect(rx, ry, rw, rh);
+        
+        if (!isMulti) {
+            ctx.strokeStyle = '#000';
+            ctx.lineDashOffset = (dashOffset / zoom) + (4 / zoom); 
+            ctx.strokeRect(rx, ry, rw, rh);
+        }
+
+        // Size Label (保持原有)
+        if (zoom > 0.8) {
+            const label = `${rw} x ${rh}`;
+            ctx.font = `${10/zoom}px sans-serif`;
+            const textMetrics = ctx.measureText(label);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(rx, ry - 14/zoom, textMetrics.width + 8/zoom, 14/zoom);
+            ctx.fillStyle = '#fff';
+            ctx.textBaseline = 'top';
+            ctx.fillText(label, rx + 4/zoom, ry - 14/zoom + 2/zoom);
+        }
+        ctx.restore();
     }
 }

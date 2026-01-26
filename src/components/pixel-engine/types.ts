@@ -1,8 +1,10 @@
 // src/engine/types.ts
-import { AssetSystem } from './systems/AssetSystem';
-import { Camera } from './core/Camera';
-import { InputSystem } from './systems/InputSystem';
-import { SelectionSystem } from './systems/SelectionSystem';
+
+// 为了避免循环依赖问题，建议使用 import type
+import type { AssetSystem } from './systems/AssetSystem';
+import type { Camera } from './core/Camera';
+import type { InputSystem } from './systems/InputSystem';
+import type { SelectionSystem } from './systems/SelectionSystem';
 
 // ==========================================
 // 1. 基础类型与渲染上下文
@@ -13,31 +15,40 @@ export interface Vec2 {
   y: number;
 }
 
-// [New] 将渲染上下文定义在 types 中，方便各处引用
+// 渲染上下文定义
 export interface RenderContext {
     ctx: CanvasRenderingContext2D;
     viewRect: { left: number; top: number; right: number; bottom: number };
     zoom: number;
 }
 
-// [New] 增加 IWorld 接口
+// [Update] 核心世界接口：增加了物理检测 API
 export interface IWorld {
     chunkSize: number;
-    // 增删改查
+    
+    // 基础 CRUD
     addBlock(block: PixelBlock): void;
     removeBlockById(id: string): boolean;
     getBlockAt(x: number, y: number): PixelBlock | null;
     
-    // 核心查询 (供渲染器和物理使用)
+    // [Fix] 添加缺失的接口定义
+    // 这允许 SelectionSystem 通过 ID 快速找回方块 (用于 Undo/Redo)
+    getBlockById(id: string): PixelBlock | undefined; 
+    
+    // 区域查询 (渲染核心)
     queryBlocksInRect(left: number, top: number, right: number, bottom: number): PixelBlock[];
     
-    // 序列化
+    // 物理检测
+    isRegionOccupied(x: number, y: number, w: number, h: number, ignoreIds?: Set<string>): boolean;
+    isPointOccupied(x: number, y: number): boolean;
+    
+    // 序列化与清理
     toJSON(): string;
     fromJSON(json: string): void;
     clear(): void;
 }
 
-// [New] 定义 Layer 接口，避免 Renderer 依赖具体类
+// 图层接口
 export interface ILayer {
     name: string;
     zIndex: number;
@@ -47,7 +58,7 @@ export interface ILayer {
     onDestroy?(): void;
 }
 
-// [New] 定义 LayerManager 接口
+// 图层管理器接口
 export interface ILayerManager {
     add(layer: ILayer): void;
     remove(name: string): void;
@@ -55,16 +66,21 @@ export interface ILayerManager {
     clear(): void;
 }
 
+// DI 容器结构
 export interface EngineSystems {
-    world?: IWorld; // 改为接口
-    renderer?: IRenderer; // 改为接口
+    world?: IWorld;
+    renderer?: IRenderer;
     input?: InputSystem;
     assets?: AssetSystem;
     camera?: Camera;
     selection?: SelectionSystem;
 }
 
-// [Data] 选区矩形 (世界坐标)
+// ==========================================
+// 2. 数据结构定义
+// ==========================================
+
+// 选区矩形 (世界坐标)
 export interface SelectionRect {
     x: number;
     y: number;
@@ -72,14 +88,15 @@ export interface SelectionRect {
     h: number;
 }
 
-// [Data] 剪贴板数据结构
+// 剪贴板数据格式
 export interface ClipboardData {
     source: 'pixel-engine';
     width: number;
     height: number;
-    blocks: PixelBlock[]; // 存储相对坐标的方块
+    blocks: PixelBlock[]; // 相对坐标数据
 }
 
+// 像素方块核心结构
 export interface PixelBlock {
   id: string;
   x: number;
@@ -94,14 +111,17 @@ export interface PixelBlock {
   zIndex?: number;
 }
 
+// 工具类型枚举
 export type ToolType = 'hand' | 'brush' | 'eraser' | 'rectangle' | 'portal' | 'rectangle-select';
 export type FillMode = 'color' | 'image';
 
+// 命令模式接口
 export interface ICommand {
     execute(): void;
     undo(): void;
 }
 
+// 引擎状态
 export interface EngineState {
     currentTool: ToolType;
     fillMode: FillMode;
@@ -112,7 +132,12 @@ export interface EngineState {
     debugMode: boolean;
 }
 
+// ==========================================
+// 3. 事件系统定义
+// ==========================================
+
 export type EngineEvents = {
+  // Input Events
   'input:mousedown': [Vec2, MouseEvent];
   'input:mousemove': [Vec2, MouseEvent];
   'input:mouseup': [Vec2, MouseEvent];
@@ -121,28 +146,32 @@ export type EngineEvents = {
   'input:keydown': [KeyboardEvent];
   'input:keyup': [KeyboardEvent];
   
+  // State & Settings
   'tool:set': [ToolType];
   'setting:continuous': [boolean];
   'style:set-color': [string];
   'style:set-image': [any];
+  'state:change': [Partial<EngineState>];
   
+  // World Interaction
   'world:request-enter': [string, string, (() => void)?]; 
   'viewer:block-selected': [PixelBlock | null]; 
   'viewer:block-hover': [PixelBlock | null];    
 
+  // Lifecycle & Render
   'engine:ready': [];
   'render:after': [CanvasRenderingContext2D];
+  'asset:loaded': [string]; 
   
+  // History
   'history:undo': [];
   'history:redo': [];
   'history:push': [ICommand, boolean?]; 
   'history:state-change': [boolean, boolean];
   
-  'state:change': [Partial<EngineState>];
-  'asset:loaded': [string]; 
-  
+  // Selection System Events
   'selection:change': [SelectionRect | null]; 
-  'selection:move': [SelectionRect]; // 选区移动时触发
+  'selection:move': [SelectionRect]; 
   'selection:copy': [];
   'selection:paste': [ClipboardData];
 };
@@ -155,15 +184,14 @@ export interface IEventBus {
 }
 
 // ==========================================
-// 2. 更新后的核心接口
+// 4. 核心接口 (Engine & Renderer)
 // ==========================================
 
 export interface IRenderer {
     resize(): void;
-    // [Change] 移除 drawWorld, clear，改为 draw 和 layers
     draw(): void;
-    ctx: CanvasRenderingContext2D; // 暴露 ctx 供插件使用
-    layers: ILayerManager;         // 暴露图层管理器接口
+    ctx: CanvasRenderingContext2D;
+    layers: ILayerManager;
 }
 
 export interface EngineConfig {
@@ -175,23 +203,23 @@ export interface EngineConfig {
 
 export interface IEngine {
   canvas: HTMLCanvasElement;
+  config: EngineConfig;
+  state: EngineState;
+  
+  // Systems
   world: IWorld;
   camera: Camera; 
   input: InputSystem; 
-  renderer: IRenderer; // 这里现在引用的是更新后的 IRenderer
+  renderer: IRenderer;
   events: IEventBus; 
   assets: AssetSystem;
-  config: EngineConfig;
-  state: EngineState;
   selection: SelectionSystem;
 
+  // Methods
   resize(): void;
   destroy(): void;
   requestRender(): void;
-  
-  // 方便插件注册
   registerPlugin(plugin: IPlugin): void;
-  
 }
 
 export interface IPlugin {
