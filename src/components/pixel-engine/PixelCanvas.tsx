@@ -17,7 +17,8 @@ import { SelectionTool } from "./tools/SelectionTool";
 
 import { usePixelEngine } from "./PixelContext";
 import { EditorMode } from "@/app/[locale]/(main)/worlds/_lib/modeStore";
-
+import { BlockInspector } from "./_components/BlockInspector";
+import { HandTool } from "./tools/HandTool";
 interface Props {
     mode: EditorMode;
 }
@@ -39,24 +40,26 @@ export default function PixelCanvas({ mode }: Props) {
 
         const config = {
             container: containerRef.current,
-            backgroundColor: mode === 'editor' ? '#111827' : '#000000',
+            backgroundColor: mode === 'editor' ? '#fff' : '#fff',
             readOnly: mode === 'project',
+            // [Fixed] 关键配置：分离数据块大小和视觉网格大小
+            chunkSize: 128, // 空间哈希索引大小（保持高性能）
+            gridSize: 20,   // 视觉/操作网格大小（所有工具基于此吸附）
         };
 
         const systems = {
-            // 这里使用我们新的高性能 SpatialHashWorld
-            world: new World(128),
+            world: new World(config.chunkSize),
         };
 
         const engine = new Engine(config, systems);
 
         if (mode === 'editor') {
             const editorPlugin = new EditorToolsPlugin([
+                new HandTool(engine), 
                 new BrushTool(engine),
                 new EraserTool(engine),
                 new RectangleTool(engine),
                 new PortalTool(engine),
-                // [New] 注册选区工具
                 new SelectionTool(engine)
             ]);
             
@@ -80,5 +83,9 @@ export default function PixelCanvas({ mode }: Props) {
         };
     }, [mode, setEngine]);
 
-    return <div ref={containerRef} className="relative w-full h-full touch-none outline-none bg-gray-900 overflow-hidden" />;
+    return (
+        <div ref={containerRef} className="relative w-full h-full touch-none outline-none bg-gray-900 overflow-hidden">
+            {mode === 'editor' && <BlockInspector />}
+        </div>
+    );
 }

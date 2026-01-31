@@ -4,7 +4,7 @@ import { Camera } from './Camera';
 import { Renderer } from '../systems/Renderer';
 import { InputSystem } from '../systems/InputSystem';
 import { AssetSystem } from '../systems/AssetSystem';
-import { SelectionSystem } from '../systems/SelectionSystem'; // [New]
+import { SelectionSystem } from '../systems/SelectionSystem';
 import { EventBus } from './EventBus';
 import { 
     IEngine, 
@@ -19,7 +19,7 @@ import {
     BlockLayer, 
     GridLayer 
 } from '../layers/StandardLayers';
-import { SelectionLayer } from '../layers/SelectionLayer'; // [New]
+import { SelectionLayer } from '../layers/SelectionLayer';
 
 // [DI] 定义依赖注入的系统结构
 export interface EngineSystems {
@@ -28,7 +28,7 @@ export interface EngineSystems {
     input?: InputSystem;
     assets?: AssetSystem;
     camera?: Camera;
-    selection?: SelectionSystem; // [New] 支持注入选区系统
+    selection?: SelectionSystem;
 }
 
 export class Engine implements IEngine {
@@ -40,7 +40,7 @@ export class Engine implements IEngine {
     public input: InputSystem;
     public renderer: IRenderer;
     public assets: AssetSystem;
-    public selection: SelectionSystem; // [New] 选区系统属性
+    public selection: SelectionSystem;
     
     public config: EngineConfig;
     public state: EngineState;
@@ -71,9 +71,7 @@ export class Engine implements IEngine {
         this.camera = systems.camera || new Camera();
         this.assets = systems.assets || new AssetSystem(this.events);
         
-        // [New] 初始化选区系统
-        // 注意：SelectionSystem 依赖 EventBus，必须在 events 之后
-        // 且必须在 setupDefaultLayers 之前，因为 SelectionLayer 可能会用到它
+        // SelectionSystem 依赖 EventBus，必须在 events 之后
         this.selection = systems.selection || new SelectionSystem(this);
 
         // Renderer 和 Input 需要 Canvas
@@ -111,13 +109,12 @@ export class Engine implements IEngine {
         this.renderer.layers.add(new BackgroundLayer(this));
         this.renderer.layers.add(new GridLayer(this));
         this.renderer.layers.add(new BlockLayer(this));
-        
-        // [New] 添加选区图层 (Ants Line)
         this.renderer.layers.add(new SelectionLayer(this));
     }
 
     private setupRenderTriggers() {
         const render = () => this.requestRender();
+        // 任何可能改变画面的事件都触发重绘
         this.events.on('input:mousemove', render);
         this.events.on('input:wheel', render);
         this.events.on('state:change', render);
@@ -125,8 +122,6 @@ export class Engine implements IEngine {
         this.events.on('history:undo', render);
         this.events.on('history:redo', render);
         this.events.on('tool:set', render);
-        
-        // [New] 选区变化也触发重绘
         this.events.on('selection:change', render);
     }
 
@@ -163,30 +158,22 @@ export class Engine implements IEngine {
         container.appendChild(this.canvas);
     }
 
+    /**
+     * [Optimization] 仅保留最基础的全局交互
+     * 复杂的工具交互（如画笔、拖拽）全部移交给 Plugin/Tool 处理
+     */
     private setupBuiltinInteractions() {
+        // 1. 全局缩放 (Zoom) - 这个通常是全局通用的，所以留在 Engine 比较合适
         this.events.on('input:wheel', (e, screenPos) => {
             const zoomFactor = Math.exp(-e.deltaY * 0.001);
             this.camera.zoomBy(zoomFactor, screenPos.x, screenPos.y);
         });
 
-        this.events.on('input:mousemove', (worldPos, e) => {
-            const isHandMode = this.input.isSpacePressed || (this.state.isReadOnly && !this.input.isSpacePressed);
-            if (this.input.isDragging && isHandMode) {
-                this.camera.panBy(e.movementX, e.movementY);
-                this.canvas.style.cursor = 'grabbing';
-                this.requestRender();
-            }
-        });
-        
-        this.events.on('input:mouseup', () => {
-            if (this.input.isSpacePressed || this.state.currentTool === 'hand') {
-                this.canvas.style.cursor = 'grab';
-            } else {
-                this.canvas.style.cursor = 'default';
-            }
-            this.requestRender();
-        });
+        // [Deleted] 移除了原本在这里处理 MouseMove(Pan) 和 MouseUp(Cursor) 的逻辑
+        // 现在这些逻辑完全由 HandTool 和 EditorToolsPlugin 负责
+        // 这样消除了对 InputSystem.isSpacePressed 的依赖，修复了报错
 
+        // 2. 状态同步事件
         this.events.on('tool:set', (t) => { this.state.currentTool = t; });
         this.events.on('setting:continuous', (b) => { this.state.isContinuous = b; });
         
@@ -274,7 +261,6 @@ export class Engine implements IEngine {
         this.events.clear();
         this.assets.clear();
         this.renderer.layers.clear();
-        // 清理选区
         this.selection.clear();
         this.resizeObserver.disconnect();
         this.plugins.forEach(p => p.onDestroy && p.onDestroy());

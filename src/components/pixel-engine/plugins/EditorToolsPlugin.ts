@@ -1,81 +1,55 @@
+// src/engine/plugins/EditorToolsPlugin.ts
 import { IPlugin, IEngine, Vec2, ToolType } from '../types';
 import { BaseTool } from '../core/ToolBase';
 import { Layer, RenderContext } from '../core/Layer';
+import { HandTool } from '../tools/HandTool';
 
-/**
- * [Internal Layer] 工具预览图层
- * 专门用于渲染当前工具的 UI（如：画笔的幽灵方块、选框线条、橡皮擦范围）。
- * 这个类是私有的，只服务于 EditorToolsPlugin，外部无需感知。
- */
 class ToolPreviewLayer extends Layer {
     constructor(engine: IEngine, private plugin: EditorToolsPlugin) {
-        // zIndex: 200 确保工具 UI 覆盖在网格(0)和方块(10)之上
         super(engine, 'tool-preview', 200); 
     }
-
     render({ ctx }: RenderContext) {
-        const tool = this.plugin.getCurrentTool();
-        const isSpacePressed = this.engine.input.isSpacePressed;
-
-        // 只有在非漫游模式（Space未按下）且有激活工具时才渲染
-        // 漫游模式下，我们通常只想看干净的画布
-        if (tool && !isSpacePressed) {
-            // 工具通常只需要 ctx 来绘制路径
-            // 此时 ctx 已经被 Engine 变换过（Translate/Scale），可以直接使用世界坐标绘制
-            tool.onRender(ctx);
-        }
+        // [Key Change] 渲染当前实际工作的工具 (可能是临时替换的 HandTool)
+        const tool = this.plugin.getActiveTool();
+        if (tool) tool.onRender(ctx);
     }
 }
 
 export class EditorToolsPlugin implements IPlugin {
     name = 'EditorTools';
     private engine!: IEngine;
-    
     private tools: Map<string, BaseTool> = new Map();
-    private currentTool: BaseTool | null = null;
     
-    // 持有图层实例，以便在插件销毁时从渲染管线中移除
+    // [Key Change] 区分“选中的工具”和“实际激活的工具”
+    private selectedTool: BaseTool | null = null; // 用户在 UI 上选的 (Brush)
+    private overrideTool: BaseTool | null = null; // 临时覆盖的 (Hand via Space)
+    
     private toolLayer: ToolPreviewLayer | null = null;
     
-    // [Refactor] 通过构造函数注入工具列表，保持插件纯净
     constructor(private initialTools: BaseTool[] = []) {}
 
     onInit(engine: IEngine) {
         this.engine = engine;
-        
-        // 1. 注册传入的工具
         this.initialTools.forEach(tool => this.registerTool(tool));
-
-        // 2. [New Architecture] 创建并注册工具渲染层
-        // 以前我们依赖 Engine 的 loop 回调 onRender，现在我们走标准的 Layer 流程
         this.toolLayer = new ToolPreviewLayer(engine, this);
         engine.renderer.layers.add(this.toolLayer);
 
-        // 3. 绑定输入事件 (Input Events)
+        // 绑定输入
         engine.events.on('input:mousedown', this.handleMouseDown);
         engine.events.on('input:mousemove', this.handleMouseMove);
         engine.events.on('input:mouseup', this.handleMouseUp);
         
-        // 4. 监听工具切换指令 (Command Events)
-        engine.events.on('tool:set', (name) => this.switchTool(name));
-        
-        // 5. [New] 绑定快捷键切换工具 (Hotkey Events)
+        // 绑定指令
+        engine.events.on('tool:set', (name) => this.setSelectedTool(name));
         engine.events.on('input:keydown', this.handleKeydown);
-        
-        // 初始化当前工具
-        this.switchTool(engine.state.currentTool);
+        engine.events.on('input:keyup', this.handleKeyup); // [New] 监听松开
+
+        // 初始化
+        this.setSelectedTool(engine.state.currentTool);
     }
 
     onDestroy() {
-        // 插件销毁时，务必清理图层，防止内存泄漏或报错
-        if (this.toolLayer) {
-            this.engine.renderer.layers.remove(this.toolLayer.name);
-        }
-    }
-
-    // --- 公开 API (供 ToolPreviewLayer 使用) ---
-    public getCurrentTool() {
-        return this.currentTool;
+        if (this.toolLayer) this.engine.renderer.layers.remove(this.toolLayer.name);
     }
 
     public registerTool(tool: BaseTool) {
@@ -83,87 +57,125 @@ export class EditorToolsPlugin implements IPlugin {
         this.tools.set(tool.name, tool);
     }
 
-    // --- 内部逻辑 ---
+    // 获取当前真正干活的工具
+    public getActiveTool() {
+        return this.overrideTool || this.selectedTool;
+    }
 
-    /**
-     * [Refactor] 快捷键处理
-     * 使用 KeybindingSystem 匹配动作
-     */
+    // --- 核心状态管理 ---
+
+    private setSelectedTool(name: ToolType) {
+        const tool = this.tools.get(name);
+        if (!tool) return;
+
+        // 1. 如果有旧工具，先清理现场 (Auto-Commit)
+        if (this.selectedTool) {
+            this.selectedTool.onDeactivate();
+        }
+
+        // 2. 切换新工具
+        this.selectedTool = tool;
+        
+        // 3. 只有在没有覆盖工具时，才激活新工具
+        if (!this.overrideTool) {
+            this.selectedTool.onActivate();
+        }
+
+        // 4. 更新 UI 状态
+        this.engine.state.currentTool = name;
+        this.engine.requestRender();
+    }
+
+    // --- 临时工具逻辑 (Spacebar Logic) ---
+
+    private setOverrideTool(name: ToolType | null) {
+        if (name === null) {
+            // 取消覆盖
+            if (this.overrideTool) {
+                this.overrideTool.onDeactivate();
+                this.overrideTool = null;
+                
+                // 恢复原工具
+                if (this.selectedTool) {
+                    this.selectedTool.onActivate();
+                    // 恢复鼠标样式
+                    // 注意：这里可能需要具体的工具重新设置一下 cursor，但 onActivate 通常会做
+                }
+            }
+        } else {
+            // 启用覆盖 (例如按下空格)
+            const tool = this.tools.get(name);
+            if (tool && tool !== this.overrideTool) {
+                // 暂停原工具 (注意：不是 Deactivate，我们不希望 Brush 提交或清理，只是暂时冻结)
+                // 但为了简单和安全，目前大部分软件逻辑是：临时切换不触发原工具的 Deactivate，只接管 Input
+                // 可是 Cursor 需要变。
+                
+                // 方案：让 overrideTool 接管，覆盖原工具
+                if (this.overrideTool) this.overrideTool.onDeactivate();
+                
+                // 此时不调用 selectedTool.onDeactivate()，因为它只是“暂停”
+                // 但是我们需要改变光标，所以 overrideTool.onActivate() 会负责设置新光标
+                
+                this.overrideTool = tool;
+                this.overrideTool.onActivate();
+            }
+        }
+        this.engine.requestRender();
+    }
+
+    // --- 事件处理 ---
+
     private handleKeydown = (e: KeyboardEvent) => {
-        const keys = this.engine.input.keys;
+        // [New] 只要按下空格，且当前没在输入框里，就切到 Hand
+        if (e.code === 'Space' && !this.isInputActive(e)) {
+            if (!this.overrideTool) {
+                this.setOverrideTool('hand');
+            }
+            return; // 吞掉空格事件，不传给 InputSystem (虽然 InputSystem 也会收到，但我们不再依赖它)
+        }
 
-        // 这里的动作名称 (如 'tool:brush') 必须与 InputSystem 中注册的一致
-        if (keys.matches('tool:brush', e)) {
-            this.engine.events.emit('tool:set', 'brush');
-        } 
-        else if (keys.matches('tool:eraser', e)) {
-            this.engine.events.emit('tool:set', 'eraser');
-        }
-        else if (keys.matches('tool:hand', e)) {
-            this.engine.events.emit('tool:set', 'hand');
-        }
-        else if (keys.matches('tool:rectangle', e)) {
-            this.engine.events.emit('tool:set', 'rectangle');
+        // 快捷键切工具
+        const keys = this.engine.input.keys;
+        if (keys.matches('tool:brush', e)) this.engine.events.emit('tool:set', 'brush');
+        else if (keys.matches('tool:eraser', e)) this.engine.events.emit('tool:set', 'eraser');
+        else if (keys.matches('tool:hand', e)) this.engine.events.emit('tool:set', 'hand');
+        else if (keys.matches('tool:rectangle', e)) this.engine.events.emit('tool:set', 'rectangle');
+        else if (keys.matches('tool:rectangle-select', e)) this.engine.events.emit('tool:set', 'rectangle-select');
+    };
+
+    private handleKeyup = (e: KeyboardEvent) => {
+        if (e.code === 'Space') {
+            this.setOverrideTool(null); // 松开空格，恢复
         }
     };
 
-    private switchTool(name: ToolType) {
-        // 特殊处理：Hand 模式
-        // Hand 模式在 InputSystem 层级有特殊处理（空格键），这里主要是 UI 状态切换
-        if (name === 'hand') {
-            this.deactivateCurrent();
-            this.engine.canvas.style.cursor = 'grab';
-            this.engine.state.currentTool = 'hand';
-            this.engine.requestRender(); 
-            return;
-        }
-
-        const tool = this.tools.get(name);
-        if (tool) {
-            this.deactivateCurrent();
-            this.currentTool = tool;
-            this.currentTool.onActivate();
-            
-            // 更新 Engine 状态，通知 UI 层 (React) 高亮对应按钮
-            this.engine.state.currentTool = name;
-            this.engine.requestRender(); 
-        }
-    }
-
-    private deactivateCurrent() {
-        if (this.currentTool) {
-            this.currentTool.onDeactivate();
-            this.currentTool = null;
-        }
-    }
-
-    // --- 事件分发 (Event Dispatching) ---
-
     private handleMouseDown = (worldPos: Vec2, e: MouseEvent) => {
-        // 如果按住了空格（漫游模式），则不触发工具逻辑
-        if (this.engine.input.isSpacePressed) return; 
-        
-        if (this.currentTool) {
-            const processed = this.currentTool.onMouseDown(worldPos, e);
-            // 如果工具处理了事件（返回 true），则请求重绘
-            if (processed) this.engine.requestRender(); 
+        const tool = this.getActiveTool();
+        if (tool) {
+            const processed = tool.onMouseDown(worldPos, e);
+            if (processed) this.engine.requestRender();
         }
     };
 
     private handleMouseMove = (worldPos: Vec2, e: MouseEvent) => {
-        if (this.engine.input.isSpacePressed) return;
-        
-        if (this.currentTool) {
-            const processed = this.currentTool.onMouseMove(worldPos, e);
-            // 移动时通常需要重绘 ToolPreviewLayer (比如画笔光标跟随)
-            this.engine.requestRender(); 
+        const tool = this.getActiveTool();
+        if (tool) {
+            tool.onMouseMove(worldPos, e);
+            // 这里不强制 render，由工具内部决定
         }
     };
 
     private handleMouseUp = (worldPos: Vec2, e: MouseEvent) => {
-        if (this.currentTool) {
-            this.currentTool.onMouseUp(worldPos, e);
+        const tool = this.getActiveTool();
+        if (tool) {
+            tool.onMouseUp(worldPos, e);
             this.engine.requestRender();
         }
     };
+    
+    // 辅助：判断是否在打字
+    private isInputActive(e: Event) {
+        const target = e.target as HTMLElement;
+        return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+    }
 }

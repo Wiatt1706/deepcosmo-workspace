@@ -1,31 +1,34 @@
 // src/engine/utils/MathUtils.ts
-/**
- * [FIX] 数学工具库 - 统一处理浮点数精度和坐标对齐
- */
+
 export class MathUtils {
-  // [FIX] 引入极小值常量，解决浮点数边界判定问题
-  public static readonly EPSILON = 0.00001;
+    // 容差值，用于解决浮点数精度问题 (e.g. 19.9999999 -> 20)
+    public static readonly EPSILON = 0.0001;
 
-  /**
-   * 网格吸附计算
-   * @param val 原始坐标
-   * @param gridSize 网格大小
-   */
-  public static snap(val: number, gridSize: number): number {
-    return Math.floor(val / gridSize) * gridSize;
-  }
+    public static generateId(prefix: string = 'obj'): string {
+        return `${prefix}_${Math.random().toString(36).substr(2, 9)}`;
+    }
 
-  /**
-   * 浮点数相等判断
-   */
-  public static equals(a: number, b: number): boolean {
-    return Math.abs(a - b) < this.EPSILON;
-  }
+    /**
+     * 网格吸附 (Snap to Grid)
+     * 修复了负数坐标的吸附逻辑，确保 -20 ~ 0 之间的坐标被正确吸附到 -20 而不是 0
+     */
+    public static snap(value: number, size: number): number {
+        // 先加上 EPSILON 防止 19.99999 被 floor 成 19
+        // 使用 Math.floor 确保负数也能向左对齐 (e.g. floor(-0.5) = -1)
+        return Math.floor((value + MathUtils.EPSILON) / size) * size;
+    }
 
-  /**
-   * 生成唯一ID (简单商业级实现，推荐后续换成 uuid 库)
-   */
-  public static generateId(prefix: string = 'obj'): string {
-    return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-  }
+    /**
+     * 限制数值范围
+     */
+    public static clamp(value: number, min: number, max: number): number {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    /**
+     * 线性插值 (Lerp)
+     */
+    public static lerp(start: number, end: number, t: number): number {
+        return start * (1 - t) + end * t;
+    }
 }

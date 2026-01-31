@@ -1,3 +1,4 @@
+// src/engine/systems/InputSystem.ts
 import { Camera } from '../core/Camera';
 import { IEventBus, Vec2 } from '../types';
 import { KeybindingSystem } from './KeybindingSystem';
@@ -6,9 +7,9 @@ export class InputSystem {
     public mouseScreen: Vec2 = { x: 0, y: 0 };
     public mouseWorld: Vec2 = { x: 0, y: 0 };
     public isDragging: boolean = false;
-    public isSpacePressed: boolean = false;
+    // [Deleted] isSpacePressed 已被移除，不再由 InputSystem 管理
 
-    // [New] 快捷键系统
+    // 快捷键子系统
     public keys: KeybindingSystem;
 
     private rectCache: DOMRect | null = null;
@@ -19,7 +20,6 @@ export class InputSystem {
         private camera: Camera,
         private events: IEventBus
     ) {
-        // 初始化快捷键子系统
         this.keys = new KeybindingSystem(events);
         this.setupDefaultKeybindings();
 
@@ -27,10 +27,6 @@ export class InputSystem {
         this.bindEvents();
     }
 
-    /**
-     * [Config] 注册默认快捷键
-     * 这里定义了引擎的基础交互规范
-     */
     private setupDefaultKeybindings() {
         // History
         this.keys.register('history:undo', ['mod', 'z'], 'Undo');
@@ -41,6 +37,8 @@ export class InputSystem {
         this.keys.register('tool:eraser', ['e'], 'Eraser Tool');
         this.keys.register('tool:hand', ['h'], 'Hand Tool');
         this.keys.register('tool:rectangle', ['r'], 'Rectangle Tool');
+        this.keys.register('tool:rectangle-select', ['m'], 'Select Tool'); // M for Marquee
+        this.keys.register('tool:portal', ['p'], 'Portal Tool');
         
         // View
         this.keys.register('view:reset', ['mod', '0'], 'Reset View');
@@ -67,19 +65,11 @@ export class InputSystem {
 
     private bindEvents() {
         this._handlers.keydown = (e: KeyboardEvent) => {
-            // 1. 全局状态追踪
-            if (e.code === 'Space') this.isSpacePressed = true;
-            
-            // 2. 触发 Engine 事件
+            // 不再处理 Space 状态，只负责分发事件
             this.events.emit('input:keydown', e);
-
-            // 3. [New] 检查快捷键
-            // 这种方式让所有 Plugin 都可以只监听同一个 'input:keydown'，
-            // 然后调用 input.keys.matches('action', e) 来判断，极大简化了逻辑
         };
 
         this._handlers.keyup = (e: KeyboardEvent) => {
-            if (e.code === 'Space') this.isSpacePressed = false;
             this.events.emit('input:keyup', e);
         };
 
@@ -94,7 +84,7 @@ export class InputSystem {
         };
         
         this._handlers.mousedown = (e: MouseEvent) => {
-            // [Fix] 只有左键才算 Dragging，避免右键触发画笔
+            // 仅左键视为主要交互拖拽
             if (e.button === 0) {
                 this.isDragging = true;
             }
@@ -108,20 +98,19 @@ export class InputSystem {
         };
         
         this._handlers.wheel = (e: WheelEvent) => {
-            // [Interaction] 阻止浏览器默认的缩放行为 (Ctrl+Wheel)
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
             }
             this.events.emit('input:wheel', e, this.mouseScreen);
         };
 
-        // Window 级监听
+        // Window Listeners
         window.addEventListener('keydown', this._handlers.keydown);
         window.addEventListener('keyup', this._handlers.keyup);
         window.addEventListener('mousemove', this._handlers.mousemove);
         window.addEventListener('mouseup', this._handlers.mouseup);
         
-        // Canvas 级监听
+        // Canvas Listeners
         this.canvas.addEventListener('mousedown', this._handlers.mousedown);
         this.canvas.addEventListener('dblclick', this._handlers.dblclick);
         this.canvas.addEventListener('wheel', this._handlers.wheel as any, { passive: false });
