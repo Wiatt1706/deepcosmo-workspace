@@ -1,11 +1,9 @@
 // src/engine/tools/StandardTools.ts
 import { BaseTool } from '../core/ToolBase';
-import { Vec2, ICommand } from '../types'; // [Fixed] 引入 ICommand
+import { Vec2, ICommand, PixelBlock } from '../types';
 import { AddBlockCommand, RemoveBlockCommand, BatchCommand } from '../commands';
 import { MathUtils } from '../utils/MathUtils';
-import { BlockFactory } from '../utils/BlockFactory';
 
-// --- Helper ---
 const isSameGrid = (p1: Vec2, p2: Vec2, size: number) => {
     return MathUtils.snap(p1.x, size) === MathUtils.snap(p2.x, size) &&
            MathUtils.snap(p1.y, size) === MathUtils.snap(p2.y, size);
@@ -17,7 +15,6 @@ const isSameGrid = (p1: Vec2, p2: Vec2, size: number) => {
 export class BrushTool extends BaseTool {
     name = 'brush';
     private isDrawing = false;
-    // [Fixed] 严格类型定义，不再使用 any
     private batchCommands: ICommand[] = []; 
     private lastGridPos: Vec2 | null = null;
 
@@ -35,9 +32,10 @@ export class BrushTool extends BaseTool {
     }
 
     onMouseDown(pos: Vec2, e: MouseEvent): boolean {
+        // [Feature] Alt + Click = 吸色
         if (e.altKey) {
             const block = this.engine.world.getBlockAt(pos.x, pos.y);
-            if (block && block.color) {
+            if (block) {
                 this.engine.events.emit('style:set-color', block.color);
             }
             return true;
@@ -76,10 +74,8 @@ export class BrushTool extends BaseTool {
         const { x: gx, y: gy } = this.getSnappedPos(mouse);
         const state = this.engine.state;
 
-        const isBlocked = this.engine.world.isPointOccupied(gx + size/2, gy + size/2);
-        const isOutsideSelection = !this.isPointInSelection(gx, gy);
-
-        if (isOutsideSelection) {
+        // 选区遮罩检测
+        if (!this.isPointInSelection(gx, gy)) {
             ctx.strokeStyle = '#9ca3af';
             ctx.lineWidth = 1 / this.engine.camera.zoom;
             ctx.beginPath();
@@ -88,6 +84,8 @@ export class BrushTool extends BaseTool {
             ctx.stroke();
             return;
         }
+
+        const isBlocked = this.engine.world.isPointOccupied(gx + size/2, gy + size/2);
 
         if (isBlocked) {
             ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; 
@@ -117,10 +115,23 @@ export class BrushTool extends BaseTool {
         if (!this.isPointInSelection(gx, gy)) return;
         if (this.engine.world.isPointOccupied(gx + size/2, gy + size/2)) return;
 
-        const block = BlockFactory.createBlock(
-            this.engine.state,
-            gx, gy, size
-        );
+        // [Direct Object Creation] 直接构造数据，不再依赖 Factory
+        const block: PixelBlock = {
+            id: 'temp_' + Math.random(), // 这里的 ID 是临时的，World.addBlock 会分配真正的内存索引 ID
+            x: gx, 
+            y: gy, 
+            w: size, 
+            h: size,
+            color: this.engine.state.activeColor,
+            type: 'basic',
+            createdAt: Math.floor(Date.now() / 1000)
+        };
+
+        // 处理贴图模式
+        if (this.engine.state.fillMode === 'image' && this.engine.state.activeImage) {
+            block.type = 'image';
+            block.imageUrl = this.engine.state.activeImage.url;
+        }
         
         const cmd = new AddBlockCommand(this.engine.world, block);
         cmd.execute();
@@ -143,7 +154,6 @@ export class BrushTool extends BaseTool {
 export class EraserTool extends BaseTool {
     name = 'eraser';
     private isErasing = false;
-    // [Fixed] 严格类型定义
     private batchCommands: ICommand[] = [];
     private lastGridPos: Vec2 | null = null;
 
@@ -206,7 +216,6 @@ export class EraserTool extends BaseTool {
         ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; 
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 1 / this.engine.camera.zoom;
-        
         ctx.fillRect(gx, gy, size, size);
         ctx.strokeRect(gx, gy, size, size);
     }
@@ -220,10 +229,16 @@ export class EraserTool extends BaseTool {
 
         if (!this.isPointInSelection(gx, gy)) return;
 
-        const cmd = new RemoveBlockCommand(this.engine.world, gx + size/2, gy + size/2);
-        cmd.execute();
-        this.batchCommands.push(cmd);
-        this.engine.requestRender();
+        // [Updated Logic] 先查询是否存在方块
+        const targetBlock = this.engine.world.getBlockAt(gx + size/2, gy + size/2);
+        
+        if (targetBlock) {
+            // 只有确实删除了，才生成命令，避免空操作污染历史记录
+            const cmd = new RemoveBlockCommand(this.engine.world, 0, 0, targetBlock);
+            cmd.execute();
+            this.batchCommands.push(cmd);
+            this.engine.requestRender();
+        }
     }
 
     private isPointInSelection(x: number, y: number): boolean {
@@ -268,10 +283,22 @@ export class RectangleTool extends BaseTool {
         if (this.engine.world.isRegionOccupied(rect.x, rect.y, rect.w, rect.h)) {
             console.warn("[Rectangle] Blocked.");
         } else {
-            const block = BlockFactory.createRectBlock(
-                this.engine.state,
-                rect
-            );
+            const block: PixelBlock = {
+                id: 'temp_rect_' + Math.random(),
+                x: rect.x,
+                y: rect.y,
+                w: rect.w,
+                h: rect.h,
+                color: this.engine.state.activeColor,
+                type: 'basic',
+                createdAt: Math.floor(Date.now() / 1000)
+            };
+
+            if (this.engine.state.fillMode === 'image' && this.engine.state.activeImage) {
+                block.type = 'image';
+                block.imageUrl = this.engine.state.activeImage.url;
+            }
+
             const cmd = new AddBlockCommand(this.engine.world, block);
             cmd.execute();
             this.engine.events.emit('history:push', cmd, true);
@@ -350,15 +377,17 @@ export class PortalTool extends RectangleTool {
         }
 
         const newWorldId = MathUtils.generateId('world');
-        const cmd = new AddBlockCommand(this.engine.world, {
-            id: MathUtils.generateId('portal'),
+        const block: PixelBlock = {
+            id: 'temp_portal_' + Math.random(),
             x: rect.x, y: rect.y, w: rect.w, h: rect.h,
-            color: '#a855f7',
+            color: '#a855f7', // Purple
             type: 'nested',
             targetWorldId: newWorldId,
-            worldName: `Room ${newWorldId.slice(-4)}`
-        });
-        
+            worldName: `Room ${newWorldId.slice(-4)}`,
+            createdAt: Math.floor(Date.now() / 1000)
+        };
+
+        const cmd = new AddBlockCommand(this.engine.world, block);
         cmd.execute();
         this.engine.events.emit('history:push', cmd, true);
         this.engine.events.emit('tool:set', 'hand');

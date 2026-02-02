@@ -24,17 +24,31 @@ export interface RenderContext {
 export interface IWorld {
     chunkSize: number;
     
-    addBlock(block: PixelBlock): void;
+    // 暴露内存访问 (BlockMemory)
+    readonly memory: any;
+
+    // [Core Change] 返回 number (内存索引)，供 Command 记录用于撤销
+    addBlock(block: PixelBlock): number;
+    
     removeBlockById(id: string): boolean;
     getBlockAt(x: number, y: number): PixelBlock | null;
     getBlockById(id: string): PixelBlock | undefined; 
     
+    // 高性能查询
+    queryIndicesInRect(left: number, top: number, right: number, bottom: number): number[];
     queryBlocksInRect(left: number, top: number, right: number, bottom: number): PixelBlock[];
+    
     isRegionOccupied(x: number, y: number, w: number, h: number, ignoreIds?: Set<string>): boolean;
     isPointOccupied(x: number, y: number): boolean;
     
+    // 二进制存取
+    toBinary(): ArrayBuffer;
+    fromBinary(buffer: ArrayBuffer): void;
+    
+    // 兼容性接口
     toJSON(): string;
     fromJSON(json: string): void;
+    
     clear(): void;
 }
 
@@ -82,13 +96,18 @@ export interface ClipboardData {
 }
 
 export interface PixelBlock {
-  id: string;
+  id: string; // 在百万级模式下，这通常是 index.toString()
   x: number;
   y: number;
   w: number;
   h: number;
-  color: string;
+  color: string; // #RRGGBB
   type: 'basic' | 'image' | 'nested'; 
+  
+  // 扩展字段
+  author?: string;
+  createdAt?: number;
+  
   imageUrl?: string;
   targetWorldId?: string; 
   worldName?: string;
@@ -135,7 +154,6 @@ export type EngineEvents = {
   'world:request-enter': [string, string, (() => void)?]; 
   'viewer:block-selected': [PixelBlock | null]; 
   'viewer:block-hover': [PixelBlock | null];    
-  
   'editor:block-click': [PixelBlock];
 
   'engine:ready': [];
@@ -173,8 +191,8 @@ export interface IRenderer {
 
 export interface EngineConfig {
   container: HTMLElement;
-  chunkSize?: number;       // 数据分块大小 (通常 128)
-  gridSize?: number;        // [New] 视觉/操作网格大小 (通常 20)
+  chunkSize?: number;       
+  gridSize?: number;        
   backgroundColor?: string;
   readOnly?: boolean;
 }
