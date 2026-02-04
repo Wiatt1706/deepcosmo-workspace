@@ -12,13 +12,10 @@ export class BackgroundLayer extends Layer {
 
     render({ ctx }: RenderContext) {
         const bgColor = this.engine.config.backgroundColor || '#f5f6f8';
-        
         ctx.save();
         ctx.resetTransform(); 
-        
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        
         ctx.restore();
     }
 }
@@ -32,7 +29,7 @@ export class GridLayer extends Layer {
     }
 
     render({ ctx, viewRect, zoom }: RenderContext) {
-        // LOD 优化：视距太远不画网格
+        // 性能优化：缩放极小时不画网格
         if (zoom < 0.4) return;
 
         const gridSize = this.engine.config.gridSize || 20; 
@@ -41,6 +38,7 @@ export class GridLayer extends Layer {
         ctx.lineWidth = Math.max(0.5 / zoom, 0.5); 
         ctx.beginPath();
         
+        // 优化网格绘制范围，只画视野内的
         const startX = Math.floor(viewRect.left / gridSize) * gridSize;
         const startY = Math.floor(viewRect.top / gridSize) * gridSize;
         
@@ -54,17 +52,17 @@ export class GridLayer extends Layer {
         }
         ctx.stroke();
 
-        // 坐标轴
+        // Origin Axis
         ctx.lineWidth = 2 / zoom;
         ctx.beginPath();
-        ctx.strokeStyle = '#ef4444'; // Red X
-        ctx.moveTo(Math.max(viewRect.left, 0), 0);
+        ctx.strokeStyle = '#ef4444'; 
+        ctx.moveTo(Math.max(viewRect.left, -100), 0);
         ctx.lineTo(Math.min(viewRect.right, 100), 0);
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.strokeStyle = '#22c55e'; // Green Y
-        ctx.moveTo(0, Math.max(viewRect.top, 0));
+        ctx.strokeStyle = '#22c55e'; 
+        ctx.moveTo(0, Math.max(viewRect.top, -100));
         ctx.lineTo(0, Math.min(viewRect.bottom, 100));
         ctx.stroke();
     }
@@ -164,3 +162,5 @@ export class BlockLayer extends Layer {
         }
     }
 }
+// 注意：这里不再导出旧的 BlockLayer，或者你可以保留它作为 fallback
+// 但为了工程整洁，建议移除或重命名为 LegacyBlockLayer

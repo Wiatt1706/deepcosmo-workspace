@@ -5,6 +5,8 @@ import { Renderer } from '../systems/Renderer';
 import { InputSystem } from '../systems/InputSystem';
 import { AssetSystem } from '../systems/AssetSystem';
 import { SelectionSystem } from '../systems/SelectionSystem';
+import { HistorySystem } from '../systems/HistorySystem';
+import { ProjectSystem } from '../systems/ProjectSystem'; // [New]
 import { EventBus } from './EventBus';
 import { 
     IEngine, 
@@ -12,7 +14,8 @@ import {
     EngineConfig, 
     EngineState, 
     IWorld,
-    IRenderer
+    IRenderer,
+    EngineSystems
 } from '../types';
 import { 
     BackgroundLayer, 
@@ -20,16 +23,6 @@ import {
     GridLayer 
 } from '../layers/StandardLayers';
 import { SelectionLayer } from '../layers/SelectionLayer';
-
-// [DI] 定义依赖注入的系统结构
-export interface EngineSystems {
-    world?: IWorld;
-    renderer?: IRenderer;
-    input?: InputSystem;
-    assets?: AssetSystem;
-    camera?: Camera;
-    selection?: SelectionSystem;
-}
 
 export class Engine implements IEngine {
     // --- 核心属性 ---
@@ -40,7 +33,11 @@ export class Engine implements IEngine {
     public input: InputSystem;
     public renderer: IRenderer;
     public assets: AssetSystem;
+    
+    // --- 子系统 ---
     public selection: SelectionSystem;
+    public history: HistorySystem;
+    public project: ProjectSystem; // [New]
     
     public config: EngineConfig;
     public state: EngineState;
@@ -51,7 +48,7 @@ export class Engine implements IEngine {
     private resizeObserver: ResizeObserver;
     private isDirty: boolean = true;
 
-    // --- 游戏循环 (Game Loop) 变量 ---
+    // --- 游戏循环 ---
     private _boundLoop: (time: number) => void;
     private lastTime: number = 0;
     private accumulator: number = 0;
@@ -71,17 +68,24 @@ export class Engine implements IEngine {
         this.camera = systems.camera || new Camera();
         this.assets = systems.assets || new AssetSystem(this.events);
         
-        // SelectionSystem 依赖 EventBus，必须在 events 之后
+        // 3. 初始化业务子系统
+        // Selection 依赖 EventBus 和 World
         this.selection = systems.selection || new SelectionSystem(this);
+        
+        // History 依赖 World (用于执行 Op)
+        this.history = systems.history || new HistorySystem(this);
+        
+        // Project 依赖 World (用于序列化)
+        this.project = systems.project || new ProjectSystem(this);
 
         // Renderer 和 Input 需要 Canvas
         this.renderer = systems.renderer || new Renderer(this.canvas, this.camera, this);
         this.input = systems.input || new InputSystem(this.canvas, this.camera, this.events);
 
-        // 3. [Pipeline] 组装默认渲染管线
+        // 4. 组装默认渲染管线
         this.setupDefaultLayers();
 
-        // 4. 设置监听器
+        // 5. 设置监听器
         this.resizeObserver = new ResizeObserver(() => {
             this.resize();
             this.input.updateRectCache();
@@ -92,7 +96,7 @@ export class Engine implements IEngine {
         this.setupBuiltinInteractions();
         this.setupRenderTriggers();
 
-        // 5. 启动循环
+        // 6. 启动循环
         this.resize();
         this._boundLoop = this.loop.bind(this);
         this.lastTime = performance.now();
@@ -101,10 +105,6 @@ export class Engine implements IEngine {
         this.events.emit('engine:ready');
     }
 
-    /**
-     * [Pipeline] 初始化默认图层
-     * 绘制顺序：背景 -> 网格 -> 方块 -> 选区 -> 工具预览
-     */
     private setupDefaultLayers() {
         this.renderer.layers.add(new BackgroundLayer(this));
         this.renderer.layers.add(new GridLayer(this));
@@ -114,26 +114,27 @@ export class Engine implements IEngine {
 
     private setupRenderTriggers() {
         const render = () => this.requestRender();
-        // 任何可能改变画面的事件都触发重绘
+        // 基础交互触发重绘
         this.events.on('input:mousemove', render);
         this.events.on('input:wheel', render);
         this.events.on('state:change', render);
         this.events.on('asset:loaded', render);
-        this.events.on('history:undo', render);
-        this.events.on('history:redo', render);
         this.events.on('tool:set', render);
         this.events.on('selection:change', render);
-    }
-
-    public requestRender() {
-        this.isDirty = true;
+        
+        // 历史记录触发
+        // 注意：InputSystem 可能会发出 history:undo 事件（如果快捷键被触发）
+        // 我们在这里监听并执行实际逻辑
+        this.events.on('history:undo', () => this.history.undo());
+        this.events.on('history:redo', () => this.history.redo());
+        this.events.on('history:state-change', render);
     }
 
     private createInitialState(): EngineState {
         return {
             currentTool: 'brush',
-            fillMode: 'color',       
-            activeColor: '#3b82f6',  
+            fillMode: 'color',        
+            activeColor: '#3b82f6',   
             activeImage: null,
             isContinuous: false,
             isReadOnly: this.config.readOnly || false,
@@ -158,22 +159,14 @@ export class Engine implements IEngine {
         container.appendChild(this.canvas);
     }
 
-    /**
-     * [Optimization] 仅保留最基础的全局交互
-     * 复杂的工具交互（如画笔、拖拽）全部移交给 Plugin/Tool 处理
-     */
     private setupBuiltinInteractions() {
-        // 1. 全局缩放 (Zoom) - 这个通常是全局通用的，所以留在 Engine 比较合适
+        // Zoom
         this.events.on('input:wheel', (e, screenPos) => {
             const zoomFactor = Math.exp(-e.deltaY * 0.001);
             this.camera.zoomBy(zoomFactor, screenPos.x, screenPos.y);
         });
 
-        // [Deleted] 移除了原本在这里处理 MouseMove(Pan) 和 MouseUp(Cursor) 的逻辑
-        // 现在这些逻辑完全由 HandTool 和 EditorToolsPlugin 负责
-        // 这样消除了对 InputSystem.isSpacePressed 的依赖，修复了报错
-
-        // 2. 状态同步事件
+        // State Sync
         this.events.on('tool:set', (t) => { this.state.currentTool = t; });
         this.events.on('setting:continuous', (b) => { this.state.isContinuous = b; });
         
@@ -196,6 +189,10 @@ export class Engine implements IEngine {
         this.plugins.set(plugin.name, plugin);
     }
 
+    public requestRender() {
+        this.isDirty = true;
+    }
+
     private loop(timestamp: number) {
         if (!this.isRunning) return;
 
@@ -208,9 +205,18 @@ export class Engine implements IEngine {
 
         this.accumulator += frameTime;
 
-        while (this.accumulator >= this.FIXED_TIME_STEP) {
+        // Loop Protection (防止死亡螺旋)
+        let updates = 0;
+        const MAX_UPDATES = 5;
+
+        while (this.accumulator >= this.FIXED_TIME_STEP && updates < MAX_UPDATES) {
             this.fixedUpdate(this.FIXED_TIME_STEP);
             this.accumulator -= this.FIXED_TIME_STEP;
+            updates++;
+        }
+        
+        if (updates === MAX_UPDATES) {
+            this.accumulator = 0;
         }
 
         this.render();
@@ -233,7 +239,7 @@ export class Engine implements IEngine {
         if (this.isDirty) {
             this.renderer.draw(); 
             
-            // Post-Processing Hook
+            // Post-process / UI Layer Hook
             const ctx = this.renderer.ctx;
             ctx.save();
             const dpr = window.devicePixelRatio || 1;
@@ -262,6 +268,7 @@ export class Engine implements IEngine {
         this.assets.clear();
         this.renderer.layers.clear();
         this.selection.clear();
+        this.history.clear(); // Clear history
         this.resizeObserver.disconnect();
         this.plugins.forEach(p => p.onDestroy && p.onDestroy());
         this.canvas.remove();

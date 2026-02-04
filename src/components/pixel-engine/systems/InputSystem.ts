@@ -7,7 +7,6 @@ export class InputSystem {
     public mouseScreen: Vec2 = { x: 0, y: 0 };
     public mouseWorld: Vec2 = { x: 0, y: 0 };
     public isDragging: boolean = false;
-    // [Deleted] isSpacePressed 已被移除，不再由 InputSystem 管理
 
     // 快捷键子系统
     public keys: KeybindingSystem;
@@ -28,11 +27,12 @@ export class InputSystem {
     }
 
     private setupDefaultKeybindings() {
-        // History
+        // --- History (关键修复) ---
+        // 注册 Ctrl+Z / Ctrl+Shift+Z
         this.keys.register('history:undo', ['mod', 'z'], 'Undo');
         this.keys.register('history:redo', ['mod', 'shift', 'z'], 'Redo');
         
-        // Tools
+        // --- Tools ---
         this.keys.register('tool:brush', ['b'], 'Brush Tool');
         this.keys.register('tool:eraser', ['e'], 'Eraser Tool');
         this.keys.register('tool:hand', ['h'], 'Hand Tool');
@@ -40,8 +40,13 @@ export class InputSystem {
         this.keys.register('tool:rectangle-select', ['m'], 'Select Tool'); // M for Marquee
         this.keys.register('tool:portal', ['p'], 'Portal Tool');
         
-        // View
+        // --- View ---
         this.keys.register('view:reset', ['mod', '0'], 'Reset View');
+        
+        // --- Selection ---
+        this.keys.register('selection:delete', ['delete'], 'Delete Selection');
+        this.keys.register('selection:delete-back', ['backspace'], 'Delete Selection');
+        this.keys.register('selection:cancel', ['escape'], 'Cancel Selection');
     }
 
     public updateRectCache() {
@@ -64,8 +69,15 @@ export class InputSystem {
     }
 
     private bindEvents() {
+        // [Key Change] 键盘事件必须绑定到 window，否则用户必须先点击 canvas 才能触发
         this._handlers.keydown = (e: KeyboardEvent) => {
-            // 不再处理 Space 状态，只负责分发事件
+            // 忽略输入框内的按键
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+            // 1. 优先交给 KeybindingSystem 进行语义匹配
+            this.handleKeyShortcuts(e);
+            
+            // 2. 依然分发原始事件 (供 SelectionTool 移动等逻辑使用)
             this.events.emit('input:keydown', e);
         };
 
@@ -84,7 +96,6 @@ export class InputSystem {
         };
         
         this._handlers.mousedown = (e: MouseEvent) => {
-            // 仅左键视为主要交互拖拽
             if (e.button === 0) {
                 this.isDragging = true;
             }
@@ -98,15 +109,18 @@ export class InputSystem {
         };
         
         this._handlers.wheel = (e: WheelEvent) => {
+            // 防止浏览器默认缩放 (Ctrl+Wheel)
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
             }
             this.events.emit('input:wheel', e, this.mouseScreen);
         };
 
-        // Window Listeners
+        // Window Listeners (Keyboard)
         window.addEventListener('keydown', this._handlers.keydown);
         window.addEventListener('keyup', this._handlers.keyup);
+        
+        // Window Listeners (Mouse - 即使移出 Canvas 也能响应)
         window.addEventListener('mousemove', this._handlers.mousemove);
         window.addEventListener('mouseup', this._handlers.mouseup);
         
@@ -114,6 +128,31 @@ export class InputSystem {
         this.canvas.addEventListener('mousedown', this._handlers.mousedown);
         this.canvas.addEventListener('dblclick', this._handlers.dblclick);
         this.canvas.addEventListener('wheel', this._handlers.wheel as any, { passive: false });
+    }
+
+    /**
+     * [New] 核心修复：在这里统一派发快捷键事件
+     */
+    private handleKeyShortcuts(e: KeyboardEvent) {
+        // History
+        if (this.keys.matches('history:undo', e)) {
+            e.preventDefault();
+            this.events.emit('history:undo');
+            return;
+        }
+        if (this.keys.matches('history:redo', e)) {
+            e.preventDefault();
+            this.events.emit('history:redo');
+            return;
+        }
+
+        // Tools
+        if (this.keys.matches('tool:brush', e)) this.events.emit('tool:set', 'brush');
+        else if (this.keys.matches('tool:eraser', e)) this.events.emit('tool:set', 'eraser');
+        else if (this.keys.matches('tool:hand', e)) this.events.emit('tool:set', 'hand');
+        else if (this.keys.matches('tool:rectangle', e)) this.events.emit('tool:set', 'rectangle');
+        else if (this.keys.matches('tool:rectangle-select', e)) this.events.emit('tool:set', 'rectangle-select');
+        else if (this.keys.matches('tool:portal', e)) this.events.emit('tool:set', 'portal');
     }
 
     public destroy() {

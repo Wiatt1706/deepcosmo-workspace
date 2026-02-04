@@ -1,17 +1,16 @@
-// src/systems/SelectionSystem.ts
-
 import { IEngine, SelectionRect, ClipboardData, PixelBlock, Vec2 } from '../types';
 import { MathUtils } from '../utils/MathUtils';
-import { RemoveBlockCommand, AddBlockCommand, BatchCommand, RestoreSelectionCommand } from '../commands'; 
+import { OpType } from '../history/types';
 
 export class SelectionSystem {
     private _selection: SelectionRect | null = null;
     private _selectedIds: Set<string> = new Set();
     private _selectedBlocksMap: Map<string, PixelBlock> = new Map();
 
-    private _liftedBlocks: PixelBlock[] = [];
-    private _originalBlocks: PixelBlock[] = [];
+    private _liftedBlocks: PixelBlock[] = []; // 浮起的临时数据（视觉上在移动，但尚未写入World）
+    private _originalBlocks: PixelBlock[] = []; // 移动前的原始数据（用于撤销或放弃移动）
     private _liftStartPos: Vec2 | null = null;
+    
     private _previewCanvas: HTMLCanvasElement | null = null;
     private _previewCtx: CanvasRenderingContext2D | null = null;
     private _isCacheDirty: boolean = false;
@@ -28,53 +27,15 @@ export class SelectionSystem {
     public get liftedBlocks() { return this._liftedBlocks; }
     public get selectedIds() { return this._selectedIds; }
 
-    // --- Snapshot Restoration ---
-    public restoreSnapshot(ids: string[], rect: SelectionRect | null) {
-        this._selectedIds.clear();
-        this._selectedBlocksMap.clear();
-        this._selection = null;
-
-        if (!ids || ids.length === 0) {
-            this.setSelection(null);
-            return;
-        }
-
-        let foundAny = false;
-        const world = this.engine.world as any; 
-
-        ids.forEach(id => {
-            const block = world.getBlockById ? world.getBlockById(id) : null;
-            if (block) {
-                this._selectedIds.add(id);
-                this._selectedBlocksMap.set(id, block);
-                foundAny = true;
-            }
-        });
-
-        if (foundAny && rect) {
-            this.setSelection(rect, true);
-            this.prepareLiftData();
-        } else {
-            this.clear();
-        }
-        
-        this.emitUpdate();
-    }
-
     // --- Visual Update ---
-    
-    // [Fix] 直接使用传入的 Rect，不再二次 snap 宽高，防止尺寸回缩
     public setMarqueeRect(rect: SelectionRect) {
-        const gridSize = 20; // 建议从 config 获取
-        
+        const gridSize = this.engine.config.gridSize || 20;
         this._selection = {
-            // 使用 round 确保无浮点误差，信任 Tool 传来的对齐数据
             x: Math.round(rect.x),
             y: Math.round(rect.y),
             w: Math.round(rect.w),
             h: Math.round(rect.h)
         };
-
         // 最小尺寸保护
         if (this._selection.w < gridSize) this._selection.w = gridSize;
         if (this._selection.h < gridSize) this._selection.h = gridSize;
@@ -132,6 +93,7 @@ export class SelectionSystem {
     public setSelection(rect: SelectionRect | null, skipCapture: boolean = false) {
         if (!rect) {
             if (this.isLifted) {
+                // 如果正在浮起状态下取消选择，默认视为“确认放置”
                 if (!this.place()) this.abortMove();
             }
             this._selection = null;
@@ -158,7 +120,11 @@ export class SelectionSystem {
 
     public clear() { this.setSelection(null); }
 
-    // --- Core: Lift / Place ---
+    // =========================================================
+    // Core: Lift / Place (Drag & Drop Logic)
+    // 重构点：使用 HistorySystem 替代 BatchCommand
+    // =========================================================
+
     private prepareLiftData() {
         if (!this._selection || this._selectedBlocksMap.size === 0) {
             this._liftedBlocks = [];
@@ -166,7 +132,10 @@ export class SelectionSystem {
             return;
         }
         const blocks = Array.from(this._selectedBlocksMap.values());
+        // 深拷贝原始数据，用于“放弃移动”或“生成删除Op”
         this._originalBlocks = blocks.map(b => ({ ...b }));
+        
+        // 生成浮动数据 (坐标归零，相对于 Selection 原点)
         this._liftedBlocks = blocks.map(b => ({
             ...b,
             x: b.x - this._selection!.x,
@@ -175,66 +144,88 @@ export class SelectionSystem {
         this._isCacheDirty = true;
     }
 
+    /**
+     * 起飞：将方块从 World 中临时移除，进入“浮动层”
+     * 注意：此时不记录 History，因为移动还没完成
+     */
     public lift() {
         if (!this._selection || this.isLifted) return;
         if (this._liftedBlocks.length === 0) this.prepareLiftData();
         if (this._liftedBlocks.length === 0) return;
 
         this._liftStartPos = { x: this._selection.x, y: this._selection.y };
+        
+        // 从 World 物理移除 (视觉上由 SelectionLayer 接管渲染)
         this._originalBlocks.forEach(b => this.engine.world.removeBlockById(b.id));
+        
         this.isLifted = true;
         this.engine.requestRender();
     }
 
+    /**
+     * 放置：确认移动，生成并提交事务
+     */
     public place(): boolean {
         if (!this._selection || !this.isLifted) return false;
 
         const targetX = this._selection.x;
         const targetY = this._selection.y;
 
+        // 1. 检查是否有位移
         const isMoved = this._liftStartPos && (Math.abs(this._liftStartPos.x - targetX) > 0.1 || Math.abs(this._liftStartPos.y - targetY) > 0.1);
+        
+        // 如果没动，直接原地复原 (Abort)
         if (!isMoved) {
             this.abortMove(); 
             return true;
         }
 
+        // 2. 检查碰撞 (放置位置是否被占用)
+        // 注意：此时 world 里已经没有了 originalBlocks，所以只需检查目标位置是否有 *其他* 方块
         if (!this.validatePlacement(targetX, targetY, this._liftedBlocks)) return false;
 
-        // 1. Snapshot Before
-        const snapshotBefore = {
-            ids: this._originalBlocks.map(b => b.id),
-            rect: this._liftStartPos ? {
-                x: this._liftStartPos.x, y: this._liftStartPos.y,
-                w: this._selection.w, h: this._selection.h
-            } : null
-        };
+        // ============================
+        // [Transaction] Start: Move Selection
+        // ============================
+        this.engine.history.beginTransaction("Move Selection");
 
-        // 2. Prepare Data
         const newBlocks: PixelBlock[] = [];
-        const addCommands: any[] = [];
-        const removeOriginals = this._originalBlocks.map(b => new RemoveBlockCommand(this.engine.world, b.x, b.y, b));
 
-        this._liftedBlocks.forEach(b => {
-            const newId = MathUtils.generateId('moved');
-            const newBlock = { ...b, id: newId, x: targetX + b.x, y: targetY + b.y };
-            newBlocks.push(newBlock);
-            addCommands.push(new AddBlockCommand(this.engine.world, newBlock));
+        // A. 记录删除旧方块 (Remove Originals)
+        this._originalBlocks.forEach(oldBlock => {
+            // World 里已经删了(lift时删的)，但我们需要记录 History
+            // 为了保证数据一致性，这里仅仅是补录 Op
+            this.engine.history.record({
+                type: OpType.REMOVE,
+                id: oldBlock.id,
+                prevBlock: oldBlock
+            });
         });
 
-        // 3. Snapshot After
-        const snapshotAfter = {
-            ids: newBlocks.map(b => b.id),
-            rect: { ...this._selection }
-        };
+        // B. 记录添加新方块 (Add New at Target)
+        this._liftedBlocks.forEach(b => {
+            const newId = MathUtils.generateId('moved'); // 移动视为“销毁旧的，创建新的”
+            const newBlock = { ...b, id: newId, x: targetX + b.x, y: targetY + b.y };
+            
+            newBlocks.push(newBlock);
+            
+            // 执行 Add
+            this.engine.world.addBlock(newBlock);
+            // 记录 Op
+            this.engine.history.record({
+                type: OpType.ADD,
+                block: newBlock
+            });
+        });
 
-        const selectionCmd = new RestoreSelectionCommand(this, snapshotBefore, snapshotAfter);
-        const batch = new BatchCommand([selectionCmd, ...removeOriginals, ...addCommands]);
-        
-        batch.execute(); 
-        this.engine.events.emit('history:push', batch, true);
-        
-        // 4. Reset & Sync
+        // [Transaction] Commit
+        this.engine.history.commitTransaction();
+        // ============================
+
+        // 4. Reset & Sync State
         this.resetLiftState();
+        
+        // 更新选中状态为新方块
         this._selectedBlocksMap.clear();
         newBlocks.forEach(b => this._selectedBlocksMap.set(b.id, b));
         this.recalcBounds(); 
@@ -243,21 +234,30 @@ export class SelectionSystem {
         return true;
     }
 
+    /**
+     * 放弃移动：将方块放回原处 (不产生 History)
+     */
     public abortMove() {
         if (!this.isLifted) return;
+        
+        // 默默把原始方块加回去
         this._originalBlocks.forEach(b => this.engine.world.addBlock(b));
+        
+        // 恢复选区位置
         if (this._liftStartPos && this._selection) {
             this._selection.x = this._liftStartPos.x;
             this._selection.y = this._liftStartPos.y;
         }
+        
         this.isLifted = false;
         this._originalBlocks = [];
         this._liftStartPos = null;
         this._previewCanvas = null;
         
+        // 恢复选中状态
         this._selectedBlocksMap.clear();
         this._originalBlocks.forEach(b => this._selectedBlocksMap.set(b.id, b));
-        this.recalcBounds();
+        this.recalcBounds(); // 重新计算边界，确保没有浮点误差
 
         this.emitUpdate();
     }
@@ -281,6 +281,7 @@ export class SelectionSystem {
             this._previewCanvas = document.createElement('canvas');
             this._previewCtx = this._previewCanvas.getContext('2d');
         }
+        // Resize check
         if (this._previewCanvas.width !== this._selection.w || this._previewCanvas.height !== this._selection.h) {
              this._previewCanvas.width = this._selection.w;
              this._previewCanvas.height = this._selection.h;
@@ -312,68 +313,108 @@ export class SelectionSystem {
         this.engine.requestRender();
     }
 
+    // =========================================================
+    // Clipboard: Copy / Paste
+    // =========================================================
+
     private bindClipboardEvents() { 
         window.addEventListener('keydown', (e) => {
+            // 忽略输入框
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
             const isCtrl = e.ctrlKey || e.metaKey;
             if (isCtrl && e.code === 'KeyC' && this.hasSelection) {
                 e.preventDefault();
                 this.copy();
             }
+            // Paste 通常由浏览器菜单或 Ctrl+V 触发，但出于安全限制，建议监听 'paste' 事件
+            // 这里为了简化演示，假设外部或 KeybindingSystem 会调用 paste
         });
     }
 
     public async copy() {
+        // 1. 如果当前没有浮动数据，尝试从选区生成
+        if (!this._selection || this._liftedBlocks.length === 0) {
+            this.prepareLiftData();
+        }
+
+        // [Fix] 显式检查 this._selection 是否为空
+        // TypeScript 无法推断 prepareLiftData 后 _selection 一定存在
+        // 所以这里必须写 (!this._selection || ...)
         if (!this._selection || this._liftedBlocks.length === 0) return;
-        const data: ClipboardData = { source: 'pixel-engine', width: this._selection.w, height: this._selection.h, blocks: this._liftedBlocks };
-        try { await navigator.clipboard.writeText(JSON.stringify(data)); this.engine.events.emit('selection:copy'); } catch (e) {}
+
+        const data: ClipboardData = { 
+            source: 'pixel-engine', 
+            // 此时 TypeScript 知道 this._selection 一定不为 null
+            width: this._selection.w, 
+            height: this._selection.h, 
+            blocks: this._liftedBlocks 
+        };
+        
+        try { 
+            await navigator.clipboard.writeText(JSON.stringify(data)); 
+            this.engine.events.emit('selection:copy'); 
+        } catch (e) {
+            console.error("Clipboard Copy Failed", e);
+        }
     }
 
     public async paste(pastePos: Vec2) {
         try {
             const text = await navigator.clipboard.readText();
             if(!text) return;
-            const data: ClipboardData = JSON.parse(text);
+            
+            let data: ClipboardData;
+            try {
+                data = JSON.parse(text);
+            } catch { return; } // 不是我们的数据
+            
             if(data.source !== 'pixel-engine') return;
 
+            // 如果当前正拎着东西，先强制放下
             if(this.isLifted) { if(!this.place()) return; }
 
-            const gridSize = 20;
+            const gridSize = this.engine.config.gridSize || 20;
             const targetX = MathUtils.snap(pastePos.x - data.width/2, gridSize);
             const targetY = MathUtils.snap(pastePos.y - data.height/2, gridSize);
 
-            if (!this.validatePlacement(targetX, targetY, data.blocks)) return;
+            if (!this.validatePlacement(targetX, targetY, data.blocks)) {
+                console.warn("Paste blocked: region occupied");
+                return;
+            }
 
-            const snapshotBefore = { 
-                ids: Array.from(this._selectedIds), 
-                rect: this._selection ? {...this._selection} : null 
-            };
+            // ============================
+            // [Transaction] Start: Paste
+            // ============================
+            this.engine.history.beginTransaction("Paste");
 
             const newBlocks: PixelBlock[] = [];
-            const addCommands: any[] = [];
 
             data.blocks.forEach(b => {
                 const newId = MathUtils.generateId('paste');
                 const newBlock = { ...b, id: newId, x: targetX + b.x, y: targetY + b.y };
                 newBlocks.push(newBlock);
-                addCommands.push(new AddBlockCommand(this.engine.world, newBlock));
+                
+                // Add & Record
+                this.engine.world.addBlock(newBlock);
+                this.engine.history.record({
+                    type: OpType.ADD,
+                    block: newBlock
+                });
             });
 
-            const snapshotAfter = {
-                ids: newBlocks.map(b => b.id),
-                rect: { x: targetX, y: targetY, w: data.width, h: data.height }
-            };
+            // [Transaction] Commit
+            this.engine.history.commitTransaction();
+            // ============================
 
-            const selectionCmd = new RestoreSelectionCommand(this, snapshotBefore, snapshotAfter);
-            const batch = new BatchCommand([selectionCmd, ...addCommands]);
-            
-            batch.execute();
-            this.engine.events.emit('history:push', batch, true);
-            
+            // 更新选中状态
             this._selectedBlocksMap.clear();
             newBlocks.forEach(b => this._selectedBlocksMap.set(b.id, b));
             this.recalcBounds();
 
             this.engine.events.emit('selection:paste', data);
-        } catch(e) {}
+        } catch(e) {
+            console.error("Paste failed", e);
+        }
     }
 }

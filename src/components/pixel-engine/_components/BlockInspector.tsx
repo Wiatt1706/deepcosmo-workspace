@@ -1,10 +1,9 @@
-// src/components/pixel-engine/BlockInspector.tsx
 "use client";
 import React, { useEffect, useState } from 'react';
 import { usePixelEngine }  from '../PixelContext';
 import { PixelBlock } from '../types';
+import { OpType } from '../history/types'; // [New] 引入新的历史类型
 import { X, Save, Trash2 } from 'lucide-react';
-import { AddBlockCommand, RemoveBlockCommand, BatchCommand } from '../commands';
 
 export function BlockInspector() {
     const { events, engine } = usePixelEngine();
@@ -48,35 +47,75 @@ export function BlockInspector() {
     const handleSave = () => {
         if (!selectedBlock) return;
 
-        // 构建新的方块数据
-        const newBlock: PixelBlock = {
-            ...selectedBlock,
-            color: editValues.color,
-            imageUrl: editValues.url || undefined,
-            // 简单的类型推断逻辑：有URL是图片，有ID是传送门，否则是基础块
-            type: editValues.url ? 'image' : (editValues.link ? 'nested' : 'basic'),
-            targetWorldId: editValues.link || undefined,
-            worldName: editValues.link ? `Link to ${editValues.link}` : undefined
-        };
+        // [Transaction] 1. 开启事务
+        engine.history.beginTransaction("Edit Block");
 
-        // 使用 BatchCommand 实现“修改”操作 (即 删除旧的 + 添加新的)
-        // 这样 Undo 的时候只需一步
-        const removeCmd = new RemoveBlockCommand(engine.world, selectedBlock.x, selectedBlock.y, selectedBlock);
-        const addCmd = new AddBlockCommand(engine.world, newBlock);
-        
-        const batch = new BatchCommand([removeCmd, addCmd]);
-        
-        batch.execute();
-        engine.events.emit('history:push', batch, true);
+        try {
+            // A. 准备数据
+            const oldSnapshot = { ...selectedBlock }; // 深拷贝旧数据用于 Undo
 
-        engine.requestRender();
-        setSelectedBlock(null); // 保存后关闭
+            const newBlock: PixelBlock = {
+                ...selectedBlock,
+                // ID 保持不变，保证引用的连续性 (或者生成新 ID 也可以，看业务需求，这里保持不变)
+                id: selectedBlock.id, 
+                color: editValues.color,
+                imageUrl: editValues.url || undefined,
+                // 类型推断逻辑
+                type: editValues.url ? 'image' : (editValues.link ? 'nested' : 'basic'),
+                targetWorldId: editValues.link || undefined,
+                worldName: editValues.link ? `Link to ${editValues.link}` : undefined
+            };
+
+            // B. 执行原子替换 (Atomic Replacement)
+            
+            // Step 1: 移除旧的
+            engine.world.removeBlockById(selectedBlock.id);
+            engine.history.record({
+                type: OpType.REMOVE,
+                id: selectedBlock.id,
+                prevBlock: oldSnapshot
+            });
+
+            // Step 2: 添加新的
+            engine.world.addBlock(newBlock);
+            engine.history.record({
+                type: OpType.ADD,
+                block: newBlock
+            });
+
+            // [Transaction] 2. 提交事务
+            engine.history.commitTransaction();
+
+            // 渲染并关闭
+            engine.requestRender();
+            setSelectedBlock(null);
+
+        } catch (e) {
+            console.error("Failed to save block", e);
+            // 如果出错，回滚事务
+            engine.history.rollbackTransaction();
+        }
     };
 
     const handleDelete = () => {
-        const cmd = new RemoveBlockCommand(engine.world, selectedBlock.x, selectedBlock.y, selectedBlock);
-        cmd.execute();
-        engine.events.emit('history:push', cmd, true);
+        if (!selectedBlock) return;
+
+        // [Transaction] 删除事务
+        engine.history.beginTransaction("Delete Block");
+
+        const snapshot = { ...selectedBlock };
+        
+        // 执行
+        engine.world.removeBlockById(selectedBlock.id);
+        
+        // 记录
+        engine.history.record({
+            type: OpType.REMOVE,
+            id: selectedBlock.id,
+            prevBlock: snapshot
+        });
+        
+        engine.history.commitTransaction();
         
         engine.requestRender();
         setSelectedBlock(null);

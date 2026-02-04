@@ -4,6 +4,8 @@ import type { AssetSystem } from './systems/AssetSystem';
 import type { Camera } from './core/Camera';
 import type { InputSystem } from './systems/InputSystem';
 import type { SelectionSystem } from './systems/SelectionSystem';
+import type { HistorySystem } from './systems/HistorySystem';
+import type { ProjectSystem } from './systems/ProjectSystem'; // [New]
 
 // ==========================================
 // 1. 基础类型与渲染上下文
@@ -20,35 +22,42 @@ export interface RenderContext {
     zoom: number;
 }
 
-// 核心世界接口
+// [Core Interface] 核心世界接口
 export interface IWorld {
     chunkSize: number;
     
     // 暴露内存访问 (BlockMemory)
     readonly memory: any;
 
-    // [Core Change] 返回 number (内存索引)，供 Command 记录用于撤销
-    addBlock(block: PixelBlock): number;
-    
+    // 核心 CRUD
+    addBlock(block: PixelBlock): number; // 返回内存索引
     removeBlockById(id: string): boolean;
+    
+    // 原子更新：支持通过 UUID 更新部分属性 (History System 核心依赖)
+    updateBlockProps(id: string, props: Partial<PixelBlock>): boolean;
+
+    // 查询接口
     getBlockAt(x: number, y: number): PixelBlock | null;
     getBlockById(id: string): PixelBlock | undefined; 
+    getIndexById(id: string): number | undefined;
     
-    // 高性能查询
+    // 空间查询
     queryIndicesInRect(left: number, top: number, right: number, bottom: number): number[];
     queryBlocksInRect(left: number, top: number, right: number, bottom: number): PixelBlock[];
     
+    // 碰撞检测
     isRegionOccupied(x: number, y: number, w: number, h: number, ignoreIds?: Set<string>): boolean;
     isPointOccupied(x: number, y: number): boolean;
     
-    // 二进制存取
+    // [Serialization & GC] 核心优化接口
     toBinary(): ArrayBuffer;
-    fromBinary(buffer: ArrayBuffer): void;
+    loadFromBinary(buffer: ArrayBuffer): void; // [New]
+    rebuildIndices(): void; // [New]
+    defragment(): void;     // [New] 内存整理
     
     // 兼容性接口
     toJSON(): string;
     fromJSON(json: string): void;
-    
     clear(): void;
 }
 
@@ -68,6 +77,7 @@ export interface ILayerManager {
     clear(): void;
 }
 
+// 依赖注入容器
 export interface EngineSystems {
     world?: IWorld;
     renderer?: IRenderer;
@@ -75,6 +85,8 @@ export interface EngineSystems {
     assets?: AssetSystem;
     camera?: Camera;
     selection?: SelectionSystem;
+    history?: HistorySystem;
+    project?: ProjectSystem; // [New]
 }
 
 // ==========================================
@@ -96,7 +108,7 @@ export interface ClipboardData {
 }
 
 export interface PixelBlock {
-  id: string; // 在百万级模式下，这通常是 index.toString()
+  id: string; // UUID
   x: number;
   y: number;
   w: number;
@@ -116,11 +128,6 @@ export interface PixelBlock {
 
 export type ToolType = 'hand' | 'brush' | 'eraser' | 'rectangle' | 'portal' | 'rectangle-select';
 export type FillMode = 'color' | 'image';
-
-export interface ICommand {
-    execute(): void;
-    undo(): void;
-}
 
 export interface EngineState {
     currentTool: ToolType;
@@ -162,7 +169,6 @@ export type EngineEvents = {
   
   'history:undo': [];
   'history:redo': [];
-  'history:push': [ICommand, boolean?]; 
   'history:state-change': [boolean, boolean];
   
   'selection:change': [SelectionRect | null]; 
@@ -208,7 +214,11 @@ export interface IEngine {
   renderer: IRenderer;
   events: IEventBus; 
   assets: AssetSystem;
+  
+  // 核心子系统
   selection: SelectionSystem;
+  history: HistorySystem; 
+  project: ProjectSystem; // [New]
 
   resize(): void;
   destroy(): void;

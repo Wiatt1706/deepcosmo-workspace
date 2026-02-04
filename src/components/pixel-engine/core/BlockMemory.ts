@@ -1,12 +1,10 @@
-// src/engine/core/BlockMemory.ts
 import { PixelBlock } from '../types';
 
 export class BlockMemory {
-    // [Fixed] Rename to _capacity to allow public getter
     private _capacity: number;
     private _count: number = 0;
     
-    // Data Arrays
+    // Data Arrays (SoA Layout)
     public x!: Int32Array;
     public y!: Int32Array;
     public w!: Uint8Array;
@@ -18,7 +16,7 @@ export class BlockMemory {
     public authorId!: Uint16Array; 
     public extraId!: Uint16Array; 
 
-    // Dictionaries
+    // Dictionaries (Palettes)
     public authorPalette: string[] = [""]; 
     private authorMap: Map<string, number> = new Map([["", 0]]);
     
@@ -33,13 +31,11 @@ export class BlockMemory {
     }
 
     get count() { return this._count; }
-    
-    // [Fixed] Public getter for SelectionSystem to check bounds
     get capacity() { return this._capacity; }
 
-    public overrideCount(n: number) {
-        this._count = n;
-    }
+    // ==========================================
+    // Core: Allocation & Resizing
+    // ==========================================
 
     private allocate(cap: number) {
         this.x = new Int32Array(cap);
@@ -53,17 +49,12 @@ export class BlockMemory {
         this.extraId = new Uint16Array(cap);
     }
 
-    public prepare(targetCount: number) {
-        if (targetCount > this._capacity) {
-            const newCap = Math.max(targetCount, Math.floor(this._capacity * 1.5));
-            this.resizeBuffers(newCap);
-        }
-    }
-
     private resizeBuffers(newCap: number) {
+        // Helper to copy typed arrays
         const resize = (old: any, Type: any) => {
             const n = new Type(newCap);
-            n.set(old);
+            // 只复制有效长度，避免浪费
+            n.set(old.subarray(0, Math.min(old.length, newCap)));
             return n;
         };
         this.x = resize(this.x, Int32Array);
@@ -84,6 +75,70 @@ export class BlockMemory {
             this.resizeBuffers(newCap);
         }
     }
+
+    // ==========================================
+    // [New] Memory Compact (Garbage Collection)
+    // ==========================================
+
+    /**
+     * 内存整理：物理移除所有 w=0 的死数据，消除碎片。
+     * @returns Map<oldIndex, newIndex> 用于外部系统更新引用
+     */
+    public compact(): Map<number, number> {
+        let validCount = 0;
+        const indexMap = new Map<number, number>();
+
+        // 1. 扫描有效数据
+        for (let i = 0; i < this._count; i++) {
+            if (this.w[i] > 0) {
+                indexMap.set(i, validCount);
+                validCount++;
+            }
+        }
+
+        // 如果没有碎片，无需操作
+        if (validCount === this._count) return indexMap;
+
+        // 2. 决定新容量 (如果利用率过低，则缩容，否则保持)
+        // 策略：只有当利用率低于 40% 时才缩容，避免反复抖动
+        let newCapacity = this._capacity;
+        if (validCount < this._capacity * 0.4) {
+            newCapacity = Math.max(10000, Math.ceil(this._capacity * 0.5));
+        }
+
+        // 3. 执行数据迁移 (Allocation + Copy)
+        // 为了数据安全，我们分配新的 Buffer 进行拷贝
+        const old = {
+            x: this.x, y: this.y, w: this.w, h: this.h,
+            color: this.color, type: this.type,
+            created: this.created, authorId: this.authorId, extraId: this.extraId
+        };
+
+        this.allocate(newCapacity);
+        
+        for (const [oldIdx, newIdx] of indexMap) {
+            this.x[newIdx] = old.x[oldIdx];
+            this.y[newIdx] = old.y[oldIdx];
+            this.w[newIdx] = old.w[oldIdx];
+            this.h[newIdx] = old.h[oldIdx];
+            this.color[newIdx] = old.color[oldIdx];
+            this.type[newIdx] = old.type[oldIdx];
+            this.created[newIdx] = old.created[oldIdx];
+            this.authorId[newIdx] = old.authorId[oldIdx];
+            this.extraId[newIdx] = old.extraId[oldIdx];
+        }
+
+        // 4. 更新状态
+        this._count = validCount;
+        this._capacity = newCapacity;
+        this.freeIndices = []; // 整理后不再有空洞
+
+        return indexMap;
+    }
+
+    // ==========================================
+    // CRUD Operations
+    // ==========================================
 
     public add(block: PixelBlock): number {
         this.ensureCapacity();
@@ -119,12 +174,12 @@ export class BlockMemory {
     public remove(index: number) {
         if (index < 0 || index >= this._count) return;
         if (this.w[index] === 0) return; 
-        this.w[index] = 0; 
+        this.w[index] = 0; // Soft Delete
         this.freeIndices.push(index);
     }
 
     public getPixelBlock(index: number): PixelBlock | null {
-        if (index < 0 || index >= this._count || index >= this.color.length) return null;
+        if (index < 0 || index >= this._count) return null;
         if (this.w[index] === 0) return null;
 
         const t = this.type[index];
@@ -134,7 +189,7 @@ export class BlockMemory {
         const colorHex = '#' + (colorVal !== undefined ? colorVal.toString(16).padStart(6, '0') : '000000');
 
         return {
-            id: index.toString(),
+            id: index.toString(), // Temporary ID, usually overwritten by World
             x: this.x[index],
             y: this.y[index],
             w: this.w[index],
