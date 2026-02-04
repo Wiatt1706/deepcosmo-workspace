@@ -3,7 +3,6 @@ import React, { useEffect, useRef } from "react";
 import { Engine } from "./core/Engine";
 import { World } from "./core/World"; 
 import { EditorToolsPlugin } from "./plugins/EditorToolsPlugin";
-import { HistoryPlugin } from "./plugins/HistoryPlugin";
 import { NestedWorldPlugin } from "./plugins/NestedWorldPlugin";
 import { ViewerPlugin } from "./plugins/ViewerPlugin";
 import { 
@@ -64,7 +63,6 @@ export default function PixelCanvas({ mode }: Props) {
             ]);
             
             engine.registerPlugin(editorPlugin);
-            engine.registerPlugin(new HistoryPlugin());
             engine.registerPlugin(new NestedWorldPlugin());
         } else {
             engine.registerPlugin(new ViewerPlugin());
